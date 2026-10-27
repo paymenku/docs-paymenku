@@ -1,0 +1,29 @@
+---
+title: Cek status transaksi
+full: true
+_openapi:
+  preload:
+    - ./openapi.yaml
+  method: GET
+  webhook: false
+  toc: []
+  structuredData:
+    headings: []
+    contents:
+      - content: |
+          Mencari satu transaksi berdasarkan `trx_id` **atau** `reference_id` —
+          keduanya diterima pada parameter yang sama.
+
+          Gunakan ini untuk rekonsiliasi, bukan sebagai pengganti webhook.
+          Status resmi tetap datang lewat webhook.
+---
+
+export default function Layout(props) {
+  const { OpenAPIPage } = props.components ?? {};
+  return (
+    <>
+      {props.children}
+      <OpenAPIPage document="./openapi.yaml" operations={[{"path":"/check-status/{order_id}","method":"get"}]} showDescription />
+    </>
+  );
+}

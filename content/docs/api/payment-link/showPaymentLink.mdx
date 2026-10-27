@@ -1,0 +1,26 @@
+---
+title: Detail payment link
+full: true
+_openapi:
+  preload:
+    - ./openapi.yaml
+  method: GET
+  webhook: false
+  toc: []
+  structuredData:
+    headings: []
+    contents:
+      - content: |
+          Detail tautan beserta `tersedia` (masih bisa dibayar atau tidak) dan
+          transaksi yang sudah lahir dari tautan ini.
+---
+
+export default function Layout(props) {
+  const { OpenAPIPage } = props.components ?? {};
+  return (
+    <>
+      {props.children}
+      <OpenAPIPage document="./openapi.yaml" operations={[{"path":"/payment-link/{linkId}","method":"get"}]} showDescription />
+    </>
+  );
+}

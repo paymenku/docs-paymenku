@@ -1,0 +1,96 @@
+---
+title: Galat & kode status
+description: Arti setiap kode HTTP, bentuk envelope galat, dan kebijakan percobaan ulang.
+icon: TriangleAlert
+---
+
+## Kode HTTP
+
+| Kode | Arti | Yang harus dilakukan |
+|---|---|---|
+| `200` | Berhasil | — |
+| `201` | Objek dibuat (payment link) | — |
+| `400` | Permintaan tidak valid, atau kanal tidak aktif secara global | Perbaiki permintaan; jangan ulangi |
+| `401` | Kunci API tidak ada, formatnya salah, atau tidak dikenali | Perbaiki kredensial |
+| `403` | Kanal belum diaktifkan untuk merchant, KYC belum disetujui, atau fitur menolak kunci uji | Aktifkan kanal / selesaikan KYC |
+| `404` | Objek tidak ada, atau milik merchant lain | Jangan ulangi |
+| `422` | Validasi gagal, atau nominal di luar batas kanal | Perbaiki input |
+| `429` | Melebihi kuota | Tunggu `Retry-After`, lalu ulangi dengan backoff |
+| `500` | Galat di sisi Paymenku | Ulangi dengan backoff; hubungi dukungan bila menetap |
+| `500` | Penyedia menolak permintaan | Pesan galat dari penyedia, sering disertai `error_code` |
+
+## Dua bentuk galat
+
+Endpoint transaksi, kanal, dan payment link:
+
+```json
+{
+  "status": "error",
+  "message": "Payment channel is inactive."
+}
+```
+
+Endpoint fee, instruction, dan wallet:
+
+```json
+{
+  "success": false,
+  "message": "Wallet not found"
+}
+```
+
+Fee calculator dan payment instruction memakai validator Laravel langsung,
+sehingga galat validasinya **tanpa** `status`:
+
+```json
+{
+  "message": "The amount field is required.",
+  "errors": { "amount": ["The amount field is required."] }
+}
+```
+
+## Galat validasi
+
+```json
+{
+  "status": "error",
+  "message": "Validation failed",
+  "errors": {
+    "amount": ["validation.required"],
+    "reference_id": ["validation.required"]
+  }
+}
+```
+
+Kunci pada `errors` adalah nama field; nilainya daftar pesan galat.
+
+Pesan yang sering muncul:
+
+| Pesan | Sebab |
+|---|---|
+| `Validation failed` | Field wajib kosong atau format salah |
+| `validation.exists` pada `channel_code` | Kode kanal tidak dikenal |
+| `Minimum amount for ... is Rp 10.000` | Nominal di bawah batas kanal |
+| `Payment channel is not enabled for your merchant account.` | Kanal belum diaktifkan |
+| `Unauthorized. API Token required.` | Header `Authorization` tidak dikirim |
+| `Transaction not found` | `trx_id`/`reference_id` salah atau milik merchant lain |
+| `Rate limit exceeded.` | Kuota per menit habis |
+
+## Kebijakan percobaan ulang
+
+| Kondisi | Ulangi? | Cara |
+|---|---|---|
+| `400`, `401`, `403`, `404`, `422` | Tidak | Perbaiki dulu penyebabnya |
+| `429` | Ya | Tunggu `Retry-After`, lalu backoff eksponensial + jitter |
+| `500`, `502`, `503`, `504` | Ya | Backoff eksponensial, batasi jumlah percobaan |
+| Timeout jaringan | Ya | Pakai `Idempotency-Key` agar tidak membuat transaksi ganda |
+
+<Callout title="Selalu baca kode HTTP dan body" type="info">
+  Jangan hanya memeriksa `status`/`success`. Kode HTTP membawa arti yang tidak
+  selalu muncul di body, terutama `429` dan `503`.
+</Callout>
+
+## Melaporkan masalah
+
+Sertakan `trx_id`, waktu permintaan (dengan zona waktu), endpoint, dan kode
+HTTP saat menghubungi dukungan. Jangan pernah mengirim kunci API lengkap.

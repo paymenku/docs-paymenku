@@ -1,0 +1,46 @@
+---
+title: Gerai ritel
+description: Pembayaran tunai di kasir minimarket memakai kode bayar.
+icon: Store
+---
+
+Pelanggan membayar tunai di kasir minimarket memakai kode bayar. Berguna untuk
+pelanggan tanpa rekening bank.
+
+## Kanal yang tersedia
+
+| Kode | Gerai | Minimum | Maksimum |
+|---|---|---|---|
+| `indomaret` | Indomaret | Rp 15.000 | Rp 2.500.000 |
+| `alfamart` | Alfamart | Rp 15.000 | Rp 2.500.000 |
+
+Satu-satunya kanal dengan **batas maksimum**. Nominal di atas Rp 2.500.000
+ditolak `422`.
+
+## Bentuk payment_info
+
+```json
+{
+  "transaction_id": "RETAIL-INDOMARET-61bbead9",
+  "transaction_status": "pending",
+  "store": "INDOMARET",
+  "payment_code": "795EFE83",
+  "expiration_date": "2026-10-28T10:05:49+07:00"
+}
+```
+
+<Callout title="Nama field berbeda dari kanal lain" type="caution">
+  Kode bayar berada di `payment_code`, **bukan** `pay_code`, dan nama gerai di
+  `store`.
+</Callout>
+
+## Yang perlu diperhatikan
+
+- Tampilkan `payment_code` **dan** `store`; pelanggan menyebutkan keduanya di
+  kasir.
+- Pada sebagian kanal, `store` tidak dikembalikan — hanya `payment_code`.
+  Periksa field yang ada.
+- Fee tetap Rp 5.000 — relatif besar untuk nominal kecil.
+- Masa berlaku panjang (sekitar 24 jam), karena pelanggan perlu waktu
+  mendatangi gerai.
+- Pembayaran bergantung jam operasional gerai.

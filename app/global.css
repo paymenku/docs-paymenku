@@ -1,0 +1,29 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+@import 'fumadocs-openapi/css/preset.css';
+
+/* Fumadocs menyalakan mode gelap lewat kelas `.dark` pada <html>, bukan
+   prefers-color-scheme. Tanpa ini, varian `dark:` mengikuti tema OS. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --color-fd-primary: #6c3ce1;
+  --color-fd-primary-foreground: #ffffff;
+  --color-fd-ring: #6c3ce1;
+}
+
+.dark {
+  --color-fd-primary: #a78bfa;
+  --color-fd-primary-foreground: #1a1033;
+  --color-fd-ring: #a78bfa;
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}

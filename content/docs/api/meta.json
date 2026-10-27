@@ -1,0 +1,13 @@
+{
+  "title": "Referensi API",
+  "pages": [
+    "index",
+    "transaksi",
+    "status",
+    "kanal",
+    "payment-link",
+    "aksi",
+    "wallet",
+    "webhook"
+  ]
+}

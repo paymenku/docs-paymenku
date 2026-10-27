@@ -1,0 +1,8 @@
+{
+  "title": "Kanal & fee",
+  "pages": [
+    "listPaymentChannels",
+    "calculateFee",
+    "getPaymentInstruction"
+  ]
+}

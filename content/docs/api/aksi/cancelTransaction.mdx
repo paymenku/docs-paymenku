@@ -1,0 +1,39 @@
+---
+title: Batalkan transaksi
+full: true
+_openapi:
+  preload:
+    - ./openapi.yaml
+  method: POST
+  webhook: false
+  toc: []
+  structuredData:
+    headings: []
+    contents:
+      - content: >
+          Membatalkan transaksi yang masih `pending`.
+
+
+          - Hanya transaksi `pending` yang dapat dibatalkan; status lain dibalas
+          `422`.
+
+          - Di produksi, pembatalan hanya tersedia untuk sebagian transaksi
+          QRIS.
+            Kanal lain dibalas `422`.
+          - Transaksi sandbox dibatalkan secara lokal tanpa memanggil penyedia.
+
+
+          Status berubah menjadi `cancelled`. Webhook `payment.status_updated`
+
+          tetap menjadi sumber status resmi.
+---
+
+export default function Layout(props) {
+  const { OpenAPIPage } = props.components ?? {};
+  return (
+    <>
+      {props.children}
+      <OpenAPIPage document="./openapi.yaml" operations={[{"path":"/transaction/cancel","method":"post"}]} showDescription />
+    </>
+  );
+}

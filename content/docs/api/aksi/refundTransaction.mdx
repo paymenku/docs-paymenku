@@ -1,0 +1,42 @@
+---
+title: Refund transaksi
+full: true
+_openapi:
+  preload:
+    - ./openapi.yaml
+  method: POST
+  webhook: false
+  toc: []
+  structuredData:
+    headings: []
+    contents:
+      - content: >
+          Mengembalikan dana transaksi yang sudah `paid`.
+
+
+          - Hanya transaksi `paid` yang dapat di-refund; status lain dibalas
+          `422`.
+
+          - `refund_amount` tidak boleh melebihi nominal transaksi.
+
+          - Di produksi, refund hanya tersedia untuk sebagian transaksi
+          e-wallet.
+
+          - Transaksi sandbox di-refund secara lokal tanpa memanggil penyedia
+          dan
+            tanpa memotong saldo nyata.
+
+          Status berubah menjadi `refunded`. Saldo merchant di debit sebesar
+
+          `refund_amount` bila saldo mencukupi.
+---
+
+export default function Layout(props) {
+  const { OpenAPIPage } = props.components ?? {};
+  return (
+    <>
+      {props.children}
+      <OpenAPIPage document="./openapi.yaml" operations={[{"path":"/transaction/refund","method":"post"}]} showDescription />
+    </>
+  );
+}

@@ -1,0 +1,66 @@
+---
+title: E-Wallet
+description: Pembayaran dari saldo dompet digital, dengan redirect ke halaman penyedia.
+icon: Wallet
+---
+
+Pelanggan membayar dari saldo dompet digitalnya.
+
+## Kanal yang tersedia
+
+| Kode | Nama | Minimum | Maksimum | Settlement |
+|---|---|---|---|---|
+| `dana` | DANA | Rp 1.000 | Rp 20.000.000 | T+2 hari kerja |
+| `ovo` | OVO | Rp 1.000 | Rp 20.000.000 | T+2 hari kerja |
+| `shopeepay` | ShopeePay | Rp 1.000 | Rp 20.000.000 | T+2 hari kerja |
+
+## Contoh permintaan — OVO
+
+OVO mewajibkan `customer_phone`:
+
+```bash
+curl https://paymenku.com/api/v1/transaction/create \
+  --request POST \
+  --header 'Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "channel_code": "ovo",
+    "amount": 25000,
+    "reference_id": "INV-20261027-003",
+    "customer_name": "Siti Aminah",
+    "customer_email": "siti@example.com",
+    "customer_phone": "08123456789",
+    "return_url": "https://tokoanda.com/selesai"
+  }'
+```
+
+## Bentuk payment_info
+
+```json
+{
+  "transaction_id": "EWALLET-qTmRYRBCAGbRa4Fe",
+  "transaction_status": "pending",
+  "checkout_url": "https://ewallet.example.com/checkout/abc123",
+  "expiration_date": "2026-10-27T10:20:43+07:00"
+}
+```
+
+Arahkan pelanggan ke `checkout_url`. Setelah selesai, penyedia
+mengembalikannya ke `return_url` yang Anda kirim saat membuat transaksi.
+
+Beberapa kanal menambahkan field lain:
+
+| Field | Arti |
+|---|---|
+| `payment_actions` | Daftar aksi pembayaran (mis. deeplink aplikasi) |
+| `checkout_url_app` | Alternatif tautan checkout untuk aplikasi |
+
+Keduanya opsional — periksa keberadaannya sebelum dipakai.
+
+## Yang perlu diperhatikan
+
+- **OVO mewajibkan `customer_phone`.** Tanpa itu transaksi gagal.
+- **`return_url` bukan konfirmasi pembayaran.** Pelanggan bisa menutup tab
+  sebelum kembali. Perlakukan webhook sebagai satu-satunya sumber status.
+- Fee e-wallet adalah yang tertinggi: 3% + Rp 200. Periksa dengan
+  [Hitung Fee](/docs/api/kanal/calculateFee).

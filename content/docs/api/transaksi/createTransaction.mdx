@@ -1,0 +1,41 @@
+---
+title: Buat transaksi
+full: true
+_openapi:
+  preload:
+    - ./openapi.yaml
+  method: POST
+  webhook: false
+  toc: []
+  structuredData:
+    headings: []
+    contents:
+      - content: |
+          Membuat transaksi pembayaran pada satu kanal.
+
+          `amount` yang Anda kirim adalah **nominal dasar**. Nominal yang
+          akhirnya dibayar pelanggan bergantung pada `fee_mode` kanal:
+
+          | `fee_mode` | Dibayar pelanggan | Diterima merchant |
+          |---|---|---|
+          | `merchant` | `amount` | `amount` − fee |
+          | `customer` | `amount` + fee | `amount` |
+          | `split` | `amount` + bagian pelanggan | `amount` − bagian merchant |
+
+          Nilai yang dibebankan ke pelanggan dibulatkan ke rupiah utuh agar
+          halaman bayar dan QR ke bank tidak pernah berbeda.
+
+          Isi `payment_info` **berbeda tiap tipe kanal**. Panduan per metode:
+          [Virtual Account](#tag/virtual-account), [QRIS](#tag/qris),
+          [E-Wallet](#tag/e-wallet), [Gerai Ritel](#tag/gerai-ritel).
+---
+
+export default function Layout(props) {
+  const { OpenAPIPage } = props.components ?? {};
+  return (
+    <>
+      {props.children}
+      <OpenAPIPage document="./openapi.yaml" operations={[{"path":"/transaction/create","method":"post"}]} showDescription />
+    </>
+  );
+}

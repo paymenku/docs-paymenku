@@ -1,0 +1,48 @@
+---
+title: Referensi API
+description: Seluruh endpoint Paymenku, lengkap dengan parameter dan contoh respons.
+icon: Braces
+---
+
+Base URL untuk semua endpoint:
+
+```
+https://paymenku.com/api/v1
+```
+
+Setiap permintaan memakai bearer token dan `Content-Type: application/json`.
+Halaman di bagian ini dibuat langsung dari kontrak OpenAPI, sehingga parameter,
+tipe, dan contoh responsnya sesuai dengan yang diterima server.
+
+## Daftar endpoint
+
+| Metode | Endpoint | Kegunaan |
+|---|---|---|
+| `POST` | [/transaction/create](/docs/api/transaksi/createTransaction) | Membuat transaksi pada satu kanal |
+| `GET` | [/check-status/&#123;order_id&#125;](/docs/api/status/checkStatus) | Cek status berdasarkan `trx_id` atau `reference_id` |
+| `GET` | [/transactions](/docs/api/status/listTransactions) | Daftar transaksi dengan filter dan pagination |
+| `GET` | [/payment-channels](/docs/api/kanal/listPaymentChannels) | Kanal aktif beserta fee dan batas nominal |
+| `GET` | [/merchant/fee-calculator](/docs/api/kanal/calculateFee) | Hitung fee sebelum transaksi dibuat |
+| `GET` | [/payment/instruction](/docs/api/kanal/getPaymentInstruction) | Langkah pembayaran per kanal |
+| `POST` | [/payment-link/create](/docs/api/payment-link/createPaymentLink) | Membuat tautan checkout |
+| `GET` | [/payment-link/&#123;linkId&#125;](/docs/api/payment-link/showPaymentLink) | Detail tautan dan transaksi yang lahir darinya |
+| `GET` | [/wallet/balance](/docs/api/wallet/getWalletBalance) | Saldo tersedia |
+| `GET` | [/wallet/balance/pending](/docs/api/wallet/getWalletPendingBalance) | Saldo dalam kliring |
+
+## Webhook
+
+| Event | Kegunaan |
+|---|---|
+| [payment.status_updated](/docs/api/webhook/webhookPaymentStatusUpdated) | Status pembayaran berubah |
+
+## Mencoba dari halaman ini
+
+Halaman referensi memuat **playground**. Isi kunci API pada panel
+Authorization, lalu kirim permintaan langsung dari browser. Untuk transaksi
+nyata, gunakan kunci sandbox (`sk_test_`) sampai alur Anda selesai diuji.
+
+<Callout title="Jangan memakai kunci live di playground" type="warn">
+  Playground mengirim permintaan dari browser Anda. Kunci live yang dipakai di
+  sini terekspos pada perangkat dan riwayat jaringan. Uji dengan kunci
+  sandbox, dan panggil produksi hanya dari server.
+</Callout>

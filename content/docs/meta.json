@@ -1,0 +1,19 @@
+{
+  "title": "Dokumentasi",
+  "pages": [
+    "pengenalan",
+    "mulai-cepat",
+    "---Panduan---",
+    "autentikasi",
+    "batas-permintaan",
+    "idempotensi",
+    "transaksi",
+    "kanal-fee",
+    "payment-link",
+    "wallet",
+    "webhook",
+    "galat",
+    "---Referensi---",
+    "api"
+  ]
+}

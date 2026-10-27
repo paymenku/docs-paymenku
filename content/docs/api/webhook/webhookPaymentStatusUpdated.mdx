@@ -1,0 +1,99 @@
+---
+title: Status pembayaran berubah
+full: true
+_openapi:
+  preload:
+    - ./openapi.yaml
+  method: POST
+  webhook: true
+  toc: []
+  structuredData:
+    headings: []
+    contents:
+      - content: >
+          Paymenku mengirim HTTP POST ke `callback_url` merchant setiap kali
+
+          status pembayaran berubah. **Inilah sumber status yang resmi** —
+
+          polling `check-status` hanya untuk rekonsiliasi.
+
+
+          ## Verifikasi tanda tangan
+
+
+          Hitung HMAC-SHA256 atas `timestamp + "." + raw_body` memakai webhook
+
+          secret Anda, lalu bandingkan konstan-waktu dengan header
+
+          `X-PaymenKu-Signature`.
+
+
+          Yang di-hash adalah **raw body** persis seperti diterima. Jangan parse
+
+          JSON lalu serialisasi ulang — urutan kunci dan spasi akan berubah dan
+
+          tanda tangan jadi tidak cocok.
+
+
+          ```php
+
+          $raw  = file_get_contents('php://input');
+
+          $ts   = $_SERVER['HTTP_X_PAYMENKU_TIMESTAMP'] ?? '';
+
+          $sig  = $_SERVER['HTTP_X_PAYMENKU_SIGNATURE'] ?? '';
+
+          $mine = hash_hmac('sha256', $ts . '.' . $raw, $webhookSecret);
+
+
+          if (! hash_equals($mine, $sig)) {
+              http_response_code(401);
+              exit;
+          }
+
+          ```
+
+
+          ```javascript
+
+          import crypto from 'node:crypto';
+
+
+          // Butuh raw body — di Express: express.raw({ type: 'application/json'
+          })
+
+          const mine = crypto
+            .createHmac('sha256', webhookSecret)
+            .update(`${req.get('X-PaymenKu-Timestamp')}.${req.body}`)
+            .digest('hex');
+
+          const sig = req.get('X-PaymenKu-Signature');
+
+          const ok =
+            mine.length === sig.length &&
+            crypto.timingSafeEqual(Buffer.from(mine), Buffer.from(sig));
+          ```
+
+
+          ## Aturan penanganan
+
+
+          - **Balas 2xx secepatnya**, lalu proses di belakang. Balasan lambat
+            memicu pengiriman ulang.
+          - **Idempoten per `trx_id`.** Pengiriman ulang itu normal; memproses
+            dua kali dapat menggandakan pengiriman barang atau saldo.
+          - **Jangan percaya `amount` dari webhook sebagai nilai pesanan.**
+            Cocokkan dengan `reference_id` di sistem Anda.
+          - **Periksa `is_sandbox`.** Webhook sandbox tidak boleh memicu
+            pemenuhan pesanan sungguhan.
+---
+
+export default function Layout(props) {
+  const { OpenAPIPage } = props.components ?? {};
+  return (
+    <>
+      {props.children}
+      <OpenAPIPage document="./openapi.yaml" webhooks={[{"name":"payment.status_updated","method":"post"}]} showDescription />
+    </>
+  );
+}

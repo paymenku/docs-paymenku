@@ -1,0 +1,55 @@
+---
+title: Wallet
+description: Saldo merchant dan saldo dalam kliring.
+icon: WalletCards
+---
+
+## Saldo tersedia
+
+`GET /wallet/balance` — saldo yang sudah lewat kliring dan dapat ditarik.
+
+```json
+{
+  "success": true,
+  "data": {
+    "balance": "36793.00",
+    "currency": "IDR",
+    "formatted": "Rp 36.793"
+  }
+}
+```
+
+Merchant yang belum punya wallet dibalas `404`:
+
+```json
+{ "success": false, "message": "Wallet not found" }
+```
+
+## Saldo dalam kliring
+
+`GET /wallet/balance/pending` — saldo dari pembayaran yang sudah masuk tetapi
+masih menunggu kliring.
+
+```json
+{
+  "success": true,
+  "data": {
+    "pending_balance": "0.00",
+    "currency": "IDR",
+    "formatted": "Rp 0",
+    "clearing_days": 2,
+    "note": "Funds will be available after 2 business days from payment confirmation"
+  }
+}
+```
+
+`clearing_days` adalah jumlah hari kerja yang berlaku saat ini. Jangan
+menanamkan angkanya di dalam kode.
+
+## Catatan
+
+- Semua nominal berupa **string desimal**.
+- Saldo tersedia dan saldo kliring adalah dua angka berbeda; jangan
+  menjumlahkannya tanpa membaca `clearing_days`.
+- Dana masuk ke saldo tersedia setelah kliring **T+2** hari kerja.
+- Penarikan dana dilakukan dari Dashboard Merchant, bukan lewat API publik.

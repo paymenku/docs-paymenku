@@ -1,0 +1,72 @@
+---
+title: Batas permintaan
+description: Kuota per merchant, header rate limit, dan cara menangani 429.
+icon: Gauge
+---
+
+Batas permintaan dihitung **per merchant**, memakai jendela satu menit.
+
+| | |
+|---|---|
+| Bawaan | **120 permintaan / menit** per merchant |
+| Tanpa kunci yang dikenali | 30 permintaan / menit per IP |
+| Jendela | 60 detik |
+
+Nilai bawaan dapat diubah operator Paymenku. Jangan menanamkannya di dalam
+kode — baca dari header respons.
+
+## Header pada setiap respons
+
+```http
+X-RateLimit-Limit: 120
+X-RateLimit-Remaining: 119
+X-RateLimit-Reset: 1793067181
+```
+
+| Header | Arti |
+|---|---|
+| `X-RateLimit-Limit` | Kuota dalam jendela saat ini |
+| `X-RateLimit-Remaining` | Sisa kuota |
+| `X-RateLimit-Reset` | Unix timestamp saat kuota direset |
+
+## Saat batas terlampaui
+
+Respons `429` beserta header `Retry-After`:
+
+```json
+{
+  "status": "error",
+  "message": "Rate limit exceeded. Please retry after 42 seconds."
+}
+```
+
+## Cara menanganinya
+
+- **Hormati `Retry-After`.** Mencoba ulang lebih cepat hanya memperpanjang
+  blokir.
+- **Pakai backoff eksponensial** dengan sedikit jitter, bukan interval tetap.
+- **Jangan polling status.** Satu webhook menggantikan ribuan panggilan
+  `check-status`.
+- **Rem dari sisi klien** ketika `X-RateLimit-Remaining` mulai menipis.
+- **Antrikan tugas massal** daripada mengirimnya serentak.
+
+<Callout title="Permintaan gagal tetap dihitung" type="warn">
+  Permintaan yang gagal validasi tetap menghabiskan kuota. Validasi input di
+  sisi Anda sebelum memanggil API.
+</Callout>
+
+## Contoh backoff
+
+```js
+async function callWithRetry(fn, maxAttempts = 4) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fn();
+    if (res.status !== 429) return res;
+
+    const retryAfter = Number(res.headers.get('Retry-After') ?? 2 ** attempt);
+    const jitter = Math.random() * 250;
+    await new Promise((r) => setTimeout(r, retryAfter * 1000 + jitter));
+  }
+  throw new Error('Rate limit: percobaan habis');
+}
+```

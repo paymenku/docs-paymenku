@@ -1,0 +1,113 @@
+---
+title: Mulai cepat
+description: Transaksi pertama Anda dalam empat langkah.
+icon: Rocket
+---
+
+Halaman ini memakai kunci sandbox (`sk_test_`), sehingga tidak ada dana nyata
+yang berpindah.
+
+## 1. Ambil kunci API
+
+Masuk ke Dashboard Merchant, buka **Settings** lalu **API Keys**. Mulailah
+dengan kunci sandbox — tanpa dana nyata dan tanpa syarat KYC.
+
+```http
+Authorization: Bearer sk_test_xxxxxxxxxxxxxxxx
+Content-Type: application/json
+Accept: application/json
+```
+
+## 2. Lihat kanal yang aktif
+
+Jangan menuliskan kode kanal secara tetap di dalam kode Anda. Ambil dari API,
+karena kanal aktif dan fee-nya bisa berubah per merchant:
+
+```bash
+curl https://paymenku.com/api/v1/payment-channels \
+  --header 'Authorization: Bearer sk_test_xxxxxxxxxxxxxxxx'
+```
+
+Respons memuat `code`, `fee_mode`, `fee_flat`, `fee_percent`, `min_amount`,
+dan `max_amount` untuk tiap kanal.
+
+## 3. Buat transaksi
+
+```bash
+curl https://paymenku.com/api/v1/transaction/create \
+  --request POST \
+  --header 'Authorization: Bearer sk_test_xxxxxxxxxxxxxxxx' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "channel_code": "qris",
+    "amount": 15000,
+    "reference_id": "INV-20261027-001",
+    "customer_name": "Budi Santoso",
+    "customer_email": "budi@example.com",
+    "return_url": "https://tokoanda.com/selesai"
+  }'
+```
+
+Respons sukses berisi `trx_id`, `pay_url`, dan `payment_info`:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "trx_id": "SBOX202610271005522956",
+    "reference_id": "INV-20261027-001",
+    "amount": "15305.00",
+    "status": "pending",
+    "pay_url": "https://paymenku.com/pay/SBOX202610271005522956",
+    "payment_info": {
+      "transaction_id": "SANDBOX-QRIS-o4fH8BHfTObhwNrG",
+      "transaction_status": "pending",
+      "qr_url": "https://paymenku.com/api/qris/SBOX202610271005522956",
+      "qr_string": "SANDBOX-QRIS-SBOX202610271005522956-15305-ZyyCBJkg",
+      "expiration_date": "2026-10-27T10:20:40+07:00"
+    }
+  }
+}
+```
+
+Arahkan pelanggan ke `pay_url`, atau pakai `payment_info` untuk membangun
+halaman pembayaran sendiri.
+
+## 4. Terima webhook
+
+Status resmi datang lewat webhook, **bukan** dari polling. Daftarkan URL
+callback di dashboard, verifikasi tanda tangannya, lalu balas 2xx.
+
+```json
+{
+  "event": "payment.status_updated",
+  "trx_id": "IDP202610271040123456",
+  "reference_id": "INV-20261027-002",
+  "status": "paid",
+  "amount": "250000.00",
+  "total_fee": "4940.00",
+  "amount_received": "245060.00",
+  "payment_channel": "bca_va",
+  "paid_at": "2026-10-27T10:45:12+07:00",
+  "is_sandbox": false
+}
+```
+
+Rumus tanda tangan dan contoh kodenya ada di [Webhook](/docs/webhook).
+
+## Menguji pembayaran di sandbox
+
+Transaksi sandbox tidak pernah dibayar sungguhan. Respons memuat
+`simulator_url` — buka tautan itu untuk menandai transaksi sebagai lunas dan
+memicu webhook.
+
+<Callout title="Jangan menanamkan kode kanal" type="warn">
+  Kanal aktif berbeda per merchant. Selalu ambil daftarnya dari
+  `GET /payment-channels` saat menyusun halaman checkout.
+</Callout>
+
+## Langkah berikutnya
+
+- [Autentikasi](/docs/autentikasi) — kunci live, KYC, dan rotasi kunci.
+- [Buat transaksi](/docs/transaksi) — seluruh field dan perhitungan fee.
+- [Referensi API](/docs/api/transaksi/createTransaction) — kontrak per endpoint.

@@ -1,0 +1,144 @@
+---
+title: Kanal & fee
+description: Kanal aktif, perhitungan fee, dan panduan cara bayar.
+icon: Percent
+---
+
+## Daftar kanal pembayaran
+
+`GET /payment-channels` mengembalikan kanal yang **aktif untuk merchant Anda**,
+lengkap dengan fee efektif dan batas nominal. Ambil daftar ini saat menyusun
+halaman checkout; jangan menanamkan kode kanal di dalam kode Anda.
+
+```bash
+curl https://paymenku.com/api/v1/payment-channels \
+  --header 'Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx'
+```
+
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "code": "bca_va",
+      "name": "BCA Virtual Account",
+      "type": "va",
+      "group": "Virtual Account",
+      "flow_type": "direct",
+      "icon": "https://paymenku.com/storage/channel-icons/bca_va.png",
+      "fee_mode": "merchant",
+      "fee_flat": 4440,
+      "fee_percent": 0.2,
+      "min_amount": 10000,
+      "max_amount": 10000000
+    },
+    {
+      "code": "qris",
+      "name": "QRIS",
+      "type": "qris",
+      "group": "QRIS",
+      "flow_type": "direct",
+      "icon": "https://paymenku.com/storage/channel-icons/qris-baru.png",
+      "fee_mode": "customer",
+      "fee_flat": 200,
+      "fee_percent": 0.7,
+      "min_amount": 1000,
+      "max_amount": 10000000
+    }
+  ]
+}
+```
+
+| Field | Arti |
+|---|---|
+| `code` | Dipakai sebagai `channel_code` saat membuat transaksi |
+| `type` | Menentukan bentuk `payment_info`: `va`, `ewallet`, `qris`, `cstore` |
+| `flow_type` | `direct` dibayar di tempat; `redirect` mengarahkan keluar |
+| `fee_mode` | Siapa menanggung fee: `merchant`, `customer`, atau `split` |
+| `fee_flat` | Fee tetap dalam rupiah |
+| `fee_percent` | Fee persentase dari nominal |
+| `min_amount`, `max_amount` | Batas nominal kanal |
+
+Alias yang setara: `GET /merchant/payment-channel`.
+
+<Callout title="fee_mode bisa berbeda antar kanal" type="warn">
+  Pada data produksi, `bca_va` bermode `merchant` sementara kanal lain
+  `customer`. Jangan mengasumsikan satu mode untuk semua kanal.
+</Callout>
+
+## Hitung fee
+
+`GET /merchant/fee-calculator?amount=100000` menghitung fee sebelum transaksi
+dibuat. Tanpa `code`, seluruh kanal aktif dikembalikan — berguna untuk
+menampilkan perbandingan biaya di halaman checkout.
+
+```bash
+curl 'https://paymenku.com/api/v1/merchant/fee-calculator?amount=100000&code=qris' \
+  --header 'Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx'
+```
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "code": "qris",
+      "name": "QRIS",
+      "group": "QRIS",
+      "type": "qris",
+      "flow": "direct",
+      "fee": { "flat": 200, "percent": 0.7 },
+      "total_fee": { "merchant": 0, "customer": 900 },
+      "fee_mode": "customer",
+      "limits": {
+        "min_amount": 1000,
+        "max_amount": 10000000,
+        "min_expiry_minutes": 1440,
+        "max_expiry_minutes": 1440
+      }
+    }
+  ]
+}
+```
+
+`total_fee` sudah dipecah menjadi bagian merchant dan bagian pelanggan sesuai
+`fee_mode`, jadi Anda tidak perlu menghitung ulang.
+
+## Panduan cara bayar
+
+`GET /payment/instruction?code=bca_va` mengembalikan langkah pembayaran per
+kanal, siap ditampilkan ke pelanggan.
+
+```bash
+curl 'https://paymenku.com/api/v1/payment/instruction?code=bca_va&pay_code=1234567890&amount=100000' \
+  --header 'Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx'
+```
+
+```json
+{
+  "success": true,
+  "message": "",
+  "data": [
+    {
+      "title": "ATM BCA",
+      "steps": [
+        "Masukkan kartu ATM BCA dan PIN",
+        "Pilih menu <b>Transaksi Lainnya</b> > <b>Transfer</b> > <b>ke Rek BCA Virtual Account</b>",
+        "Masukkan Nomor Virtual Account (<b>1234567890</b>)",
+        "Konfirmasi nominal Rp 100.000, jika sesuai pilih <b>YA</b>",
+        "Transaksi sukses, simpan struk Anda"
+      ]
+    }
+  ]
+}
+```
+
+Bila `pay_code` dan `amount` diisi, keduanya disubstitusi ke dalam teks.
+Langkah berisi tag HTML sederhana (`<b>`) untuk penekanan. Tambahkan
+`allow_html=0` bila Anda merender sebagai teks biasa — API akan menghapus
+tag-nya sendiri:
+
+```bash
+curl 'https://paymenku.com/api/v1/payment/instruction?code=bca_va&pay_code=1234567890&amount=100000&allow_html=0' \
+  --header 'Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx'
+```

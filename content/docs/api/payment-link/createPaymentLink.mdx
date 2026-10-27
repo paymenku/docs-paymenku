@@ -1,0 +1,33 @@
+---
+title: Buat payment link
+full: true
+_openapi:
+  preload:
+    - ./openapi.yaml
+  method: POST
+  webhook: false
+  toc: []
+  structuredData:
+    headings: []
+    contents:
+      - content: >
+          Membuat tautan pembayaran. Merchant **tidak** memilih kanal —
+          pelanggan
+
+          memilih sendiri di halaman checkout.
+
+
+          Tautan ini melahirkan transaksi nyata, sehingga **kunci sandbox
+
+          ditolak** dengan 403. Pakai kunci live.
+---
+
+export default function Layout(props) {
+  const { OpenAPIPage } = props.components ?? {};
+  return (
+    <>
+      {props.children}
+      <OpenAPIPage document="./openapi.yaml" operations={[{"path":"/payment-link/create","method":"post"}]} showDescription />
+    </>
+  );
+}

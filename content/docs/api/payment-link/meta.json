@@ -1,0 +1,7 @@
+{
+  "title": "Payment link",
+  "pages": [
+    "createPaymentLink",
+    "showPaymentLink"
+  ]
+}

@@ -1,0 +1,109 @@
+---
+title: Batal & refund
+description: Membatalkan transaksi pending dan mengembalikan dana transaksi yang sudah dibayar.
+icon: Undo2
+---
+
+Dua aksi tersedia lewat API: pembatalan transaksi `pending` dan refund
+transaksi `paid`.
+
+<Callout title="Dukungan terbatas" type="warn">
+  Di produksi, pembatalan hanya tersedia untuk sebagian transaksi **QRIS**,
+  dan refund hanya untuk sebagian transaksi **e-wallet**. Kanal lain dibalas
+  `422`. Transaksi sandbox diproses lokal tanpa memanggil penyedia.
+</Callout>
+
+## Membatalkan transaksi
+
+`POST /transaction/cancel`
+
+```bash
+curl https://paymenku.com/api/v1/transaction/cancel \
+  --request POST \
+  --header 'Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx' \
+  --header 'Content-Type: application/json' \
+  --data '{ "trx_id": "IDP202610271005522956" }'
+```
+
+Hanya transaksi berstatus `pending` yang dapat dibatalkan.
+
+```json
+{
+  "status": "success",
+  "message": "Transaction cancelled successfully",
+  "data": {
+    "trx_id": "IDP202610271005522956",
+    "status": "cancelled"
+  }
+}
+```
+
+Transaksi sandbox dibalas `Transaction cancelled (sandbox)`.
+
+Galat yang mungkin:
+
+| HTTP | Pesan | Sebab |
+|---|---|---|
+| `404` | `Transaction not found` | `trx_id` salah atau milik merchant lain |
+| `422` | `Cannot cancel transaction with status 'paid'. Only pending transactions can be cancelled.` | Status bukan `pending` |
+| `422` | `Cancel is only supported for QRIS payment type.` | Kanal bukan QRIS |
+| `422` | Pesan bervariasi, mis. `Cancel is not supported for this transaction.` | Kanal tidak mendukung pembatalan |
+| `422` | `Cannot cancel: missing provider reference (platformTradeNo).` | Referensi penyedia tidak tersimpan |
+| `500` | `Failed to cancel transaction: ...` | Penyedia menolak pembatalan |
+
+## Refund transaksi
+
+`POST /transaction/refund`
+
+```bash
+curl https://paymenku.com/api/v1/transaction/refund \
+  --request POST \
+  --header 'Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "trx_id": "IDP202610271005426934",
+    "refund_amount": 25950,
+    "reason": "Pesanan dibatalkan pelanggan"
+  }'
+```
+
+| Field | Wajib | Keterangan |
+|---|---|---|
+| `trx_id` | Ya | ID transaksi Paymenku |
+| `refund_amount` | Ya | Nominal refund, tidak melebihi nominal transaksi |
+| `reason` | Tidak | Alasan, maksimal 255 karakter |
+
+Respons:
+
+```json
+{
+  "status": "success",
+  "message": "Transaction refunded successfully",
+  "data": {
+    "trx_id": "IDP202610271005426934",
+    "status": "refunded",
+    "refund_amount": 25950,
+    "merchant_refund_no": "REF20261027104512345678"
+  }
+}
+```
+
+Saldo merchant didebit sebesar `refund_amount` bila saldo mencukupi. Transaksi
+sandbox dibalas `Transaction refunded (sandbox)` tanpa memotong saldo nyata.
+
+Galat yang mungkin:
+
+| HTTP | Pesan | Sebab |
+|---|---|---|
+| `404` | `Transaction not found` | `trx_id` salah atau milik merchant lain |
+| `422` | `Cannot refund transaction with status 'pending'. Only paid transactions can be refunded.` | Status bukan `paid` |
+| `422` | `Refund amount cannot exceed transaction amount.` | Nominal refund terlalu besar |
+| `422` | `Refund is currently only supported for E-Wallet payment type.` | Kanal bukan e-wallet |
+| `422` | Pesan bervariasi, mis. `Refund is not supported for this transaction.` | Kanal tidak mendukung refund |
+| `500` | `Failed to refund transaction: ...` | Penyedia menolak refund |
+
+## Setelah aksi
+
+Status berubah menjadi `cancelled` atau `refunded`, dan webhook
+`payment.status_updated` tetap menjadi sumber status resmi. Jangan menganggap
+respons aksi sebagai pengganti webhook.

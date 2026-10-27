@@ -1,0 +1,29 @@
+---
+title: Panduan cara bayar
+full: true
+_openapi:
+  preload:
+    - ./openapi.yaml
+  method: GET
+  webhook: false
+  toc: []
+  structuredData:
+    headings: []
+    contents:
+      - content: |
+          Langkah pembayaran per kanal, siap ditampilkan ke pelanggan. Bila
+          `pay_code` dan `amount` diisi, keduanya disubstitusi ke dalam teks.
+
+          Langkah berisi tag HTML sederhana (`<b>`) untuk penekanan. Bila Anda
+          merender sebagai teks biasa, bersihkan tag-nya sendiri.
+---
+
+export default function Layout(props) {
+  const { OpenAPIPage } = props.components ?? {};
+  return (
+    <>
+      {props.children}
+      <OpenAPIPage document="./openapi.yaml" operations={[{"path":"/payment/instruction","method":"get"}]} showDescription />
+    </>
+  );
+}

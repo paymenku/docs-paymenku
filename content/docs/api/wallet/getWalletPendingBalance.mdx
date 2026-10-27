@@ -1,0 +1,26 @@
+---
+title: Saldo dalam kliring
+full: true
+_openapi:
+  preload:
+    - ./openapi.yaml
+  method: GET
+  webhook: false
+  toc: []
+  structuredData:
+    headings: []
+    contents:
+      - content: |
+          Saldo dari pembayaran yang sudah masuk tetapi masih menunggu kliring.
+          `clearing_days` adalah jumlah hari kerja yang berlaku saat ini.
+---
+
+export default function Layout(props) {
+  const { OpenAPIPage } = props.components ?? {};
+  return (
+    <>
+      {props.children}
+      <OpenAPIPage document="./openapi.yaml" operations={[{"path":"/wallet/balance/pending","method":"get"}]} showDescription />
+    </>
+  );
+}

@@ -1,0 +1,111 @@
+---
+title: Paymenku API
+description: Payment gateway untuk bisnis di Indonesia — QRIS, Virtual Account, e-wallet, dan gerai ritel.
+icon: House
+---
+
+Paymenku API menerima pembayaran lewat satu antarmuka **REST** berbasis HTTPS
+dan JSON. Anda membuat transaksi, menampilkan informasi pembayaran kepada
+pelanggan, lalu menerima status resmi lewat webhook.
+
+<Cards>
+  <Card
+    title="Mulai cepat"
+    href="/docs/mulai-cepat"
+    description="Transaksi pertama Anda dalam empat langkah."
+  />
+  <Card
+    title="Autentikasi"
+    href="/docs/autentikasi"
+    description="Kunci live dan sandbox, syarat KYC, dan cara menjaganya."
+  />
+  <Card
+    title="Webhook"
+    href="/docs/webhook"
+    description="Verifikasi tanda tangan dan aturan penanganan status."
+  />
+  <Card
+    title="Referensi API"
+    href="/docs/api/transaksi/createTransaction"
+    description="Setiap endpoint, parameter, dan contoh respons."
+  />
+</Cards>
+
+## Base URL
+
+```
+https://paymenku.com/api/v1
+```
+
+Live dan sandbox memakai base URL yang sama. Yang membedakan hanyalah kunci
+API yang dipakai.
+
+## Dua bentuk envelope
+
+Perlu diperhatikan karena **tidak seragam** antar endpoint.
+
+Transaksi, kanal pembayaran, dan payment link memakai `status`:
+
+```json
+{ "status": "success", "data": { } }
+{ "status": "error", "message": "..." }
+```
+
+Fee calculator, payment instruction, dan wallet memakai
+`success`:
+
+```json
+{ "success": true, "data": { } }
+{ "success": false, "message": "..." }
+```
+
+Periksa `status`/`success` **dan** kode HTTP; jangan hanya salah satu.
+
+## Nominal uang
+
+Nominal dikirim sebagai **angka** (`15000`) tetapi dibalas sebagai **string
+desimal** (`"15305.00"`) pada endpoint transaksi dan wallet. Parse sebagai
+desimal — jangan sebagai float — agar tidak kehilangan presisi.
+
+## Siklus status
+
+| Status | Arti |
+|---|---|
+| `pending` | Dibuat, menunggu pembayaran |
+| `paid` | Terbayar; dana masuk setelah kliring |
+| `expired` | Lewat batas waktu pembayaran |
+| `failed` | Gagal di sisi penyedia |
+| `cancelled` | Dibatalkan dari dashboard |
+| `refunded` | Sudah di-refund |
+
+Transaksi selalu lahir `pending`. Hanya `paid` yang boleh memicu pengiriman
+barang atau pembukaan layanan.
+
+<Callout title="Webhook adalah sumber status resmi" type="info">
+  `GET /check-status/{order_id}` hanya untuk rekonsiliasi. Jangan melakukan
+  polling sebagai pengganti webhook.
+</Callout>
+
+## Mode sandbox
+
+Kunci `sk_test_*` membuat transaksi ber-prefix `SBOX` dan tidak memindahkan
+dana. Respons sandbox menambahkan `sandbox_mode`, `sandbox_notice`, dan
+`simulator_url` untuk menyelesaikan pembayaran secara manual.
+
+## Kliring dan settlement
+
+Dana dari pembayaran masuk ke saldo setelah kliring **T+2** hari kerja untuk
+Virtual Account, QRIS, dan e-wallet. Selama masa kliring, dana terlihat di
+`GET /wallet/balance/pending`, bukan di `GET /wallet/balance`.
+
+| Metode | Settlement |
+|---|---|
+| Virtual Account | T+2 |
+| QRIS (termasuk QRIS Custom) | T+2 |
+| E-wallet (DANA, OVO, ShopeePay) | T+2 hari kerja |
+
+## Bahasa dan format
+
+- Semua permintaan dan balasan `application/json`.
+- Waktu memakai ISO 8601 dengan offset (`2026-10-27T10:05:39+07:00`).
+- Kunci API dikirim sebagai bearer token: `Authorization: Bearer sk_live_...`.

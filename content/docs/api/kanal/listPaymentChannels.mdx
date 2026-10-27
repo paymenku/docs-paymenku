@@ -1,0 +1,44 @@
+---
+title: Daftar kanal pembayaran
+full: true
+_openapi:
+  preload:
+    - ./openapi.yaml
+  method: GET
+  webhook: false
+  toc: []
+  structuredData:
+    headings: []
+    contents:
+      - content: >
+          Kanal yang **aktif untuk merchant Anda**, lengkap dengan fee efektif
+          dan
+
+          batas nominal. Ambil daftar ini saat menyusun halaman checkout; jangan
+
+          menanamkan kode kanal di dalam kode Anda.
+
+
+          `fee_mode` dapat berbeda antar kanal pada merchant yang sama — pada
+          data
+
+          produksi, `bca_va` bermode `merchant` sementara kanal lain `customer`.
+
+
+          Kanal `qris_own` (QRIS Custom) hanya tampil bila akun sudah punya
+
+          registrasi QRIS aktif.
+
+
+          Alias yang setara: `GET /merchant/payment-channel`.
+---
+
+export default function Layout(props) {
+  const { OpenAPIPage } = props.components ?? {};
+  return (
+    <>
+      {props.children}
+      <OpenAPIPage document="./openapi.yaml" operations={[{"path":"/payment-channels","method":"get"}]} showDescription />
+    </>
+  );
+}

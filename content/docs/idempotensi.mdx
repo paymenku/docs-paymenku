@@ -1,0 +1,59 @@
+---
+title: Idempotency Key
+description: Membuat percobaan ulang tidak menghasilkan transaksi ganda.
+icon: Repeat
+---
+
+Permintaan `POST`, `PUT`, dan `PATCH` dapat membawa header
+`Idempotency-Key` supaya percobaan ulang tidak menghasilkan transaksi ganda.
+
+```http
+Idempotency-Key: INV-20261027-001
+```
+
+## Cara kerjanya
+
+1. Anda mengirim permintaan beserta kunci idempotensi.
+2. Paymenku menyimpan responsnya selama **24 jam**.
+3. Kunci yang sama dikirim lagi dalam 24 jam → permintaan **tidak** diproses
+   ulang; respons yang tersimpan diputar kembali, dengan header
+   `Idempotency-Replayed: true`.
+
+| | |
+|---|---|
+| Format | String unik, maksimum 255 karakter |
+| Masa simpan | 24 jam sejak permintaan pertama |
+| Cakupan | Per merchant, per endpoint |
+| Yang disimpan | Respons 2xx dan 4xx |
+| Yang tidak disimpan | Respons 5xx — memang harus bisa dicoba ulang |
+
+## Contoh
+
+```bash
+curl https://paymenku.com/api/v1/transaction/create \
+  --request POST \
+  --header 'Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx' \
+  --header 'Content-Type: application/json' \
+  --header 'Idempotency-Key: INV-20261027-001' \
+  --data '{
+    "channel_code": "qris",
+    "amount": 15000,
+    "reference_id": "INV-20261027-001",
+    "customer_name": "Budi Santoso",
+    "customer_email": "budi@example.com",
+    "return_url": "https://tokoanda.com/selesai"
+  }'
+```
+
+## Memilih nilai kunci
+
+Pakai sesuatu yang **stabil untuk satu maksud pembayaran** — nomor invoice,
+atau `reference_id` ditambah tanggal. Jangan memakai UUID yang dibuat baru
+setiap percobaan: tiap percobaan akan dianggap permintaan berbeda, dan justru
+itu yang ingin dicegah.
+
+<Callout title="Idempotensi bukan pengganti reference_id" type="caution">
+  `reference_id` adalah identitas pesanan di sistem Anda dan dipakai
+  mencocokkan webhook; `Idempotency-Key` hanya melindungi satu panggilan HTTP
+  dari percobaan ulang.
+</Callout>

@@ -1,0 +1,164 @@
+---
+title: Webhook
+description: Notifikasi perubahan status pembayaran, verifikasi tanda tangan, dan aturan penanganan.
+icon: Webhook
+---
+
+import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+
+Paymenku mengirim HTTP POST ke `callback_url` merchant setiap kali status
+pembayaran berubah. **Inilah sumber status yang resmi** — polling
+`check-status` hanya untuk rekonsiliasi.
+
+## Header
+
+| Header | Arti |
+|---|---|
+| `X-PaymenKu-Signature` | `HMAC-SHA256(timestamp + "." + raw_body, webhook_secret)` dalam hex |
+| `X-PaymenKu-Timestamp` | Unix timestamp; bagian dari data yang ditandatangani |
+
+## Payload
+
+```json
+{
+  "event": "payment.status_updated",
+  "trx_id": "IDP202610271040123456",
+  "reference_id": "INV-20261027-002",
+  "status": "paid",
+  "amount": "250000.00",
+  "total_fee": "4940.00",
+  "amount_received": "245060.00",
+  "payment_channel": "bca_va",
+  "customer_name": "Budi Santoso",
+  "customer_email": "budi@example.com",
+  "paid_at": "2026-10-27T10:45:12+07:00",
+  "created_at": "2026-10-27T10:40:00+07:00",
+  "is_sandbox": false
+}
+```
+
+Transaksi kedaluwarsa memakai bentuk yang sama dengan `status: "expired"` dan
+`paid_at: null`.
+
+## Verifikasi tanda tangan
+
+Hitung HMAC-SHA256 atas `timestamp + "." + raw_body` memakai webhook secret
+Anda, lalu bandingkan konstan-waktu dengan header `X-PaymenKu-Signature`.
+
+<Callout title="Hash raw body, bukan JSON hasil parse" type="caution">
+  Yang di-hash adalah **raw body** persis seperti diterima. Jangan parse JSON
+  lalu serialisasi ulang — urutan kunci dan spasi akan berubah dan tanda
+  tangan jadi tidak cocok.
+</Callout>
+
+<Tabs items={['PHP', 'Node.js', 'Go', 'Python']}>
+  <Tab value="PHP">
+    ```php
+    $raw  = file_get_contents('php://input');
+    $ts   = $_SERVER['HTTP_X_PAYMENKU_TIMESTAMP'] ?? '';
+    $sig  = $_SERVER['HTTP_X_PAYMENKU_SIGNATURE'] ?? '';
+    $mine = hash_hmac('sha256', $ts . '.' . $raw, $webhookSecret);
+
+    if (! hash_equals($mine, $sig)) {
+        http_response_code(401);
+        exit;
+    }
+    ```
+  </Tab>
+  <Tab value="Node.js">
+    ```js
+    import crypto from 'node:crypto';
+
+    // Butuh raw body — di Express: express.raw({ type: 'application/json' })
+    const mine = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(`${req.get('X-PaymenKu-Timestamp')}.${req.body}`)
+      .digest('hex');
+
+    const sig = req.get('X-PaymenKu-Signature');
+    const ok =
+      mine.length === sig.length &&
+      crypto.timingSafeEqual(Buffer.from(mine), Buffer.from(sig));
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    raw, _ := io.ReadAll(r.Body)
+    ts := r.Header.Get("X-PaymenKu-Timestamp")
+    sig := r.Header.Get("X-PaymenKu-Signature")
+
+    mac := hmac.New(sha256.New, []byte(webhookSecret))
+    mac.Write([]byte(ts + "." + string(raw)))
+    mine := hex.EncodeToString(mac.Sum(nil))
+
+    if !hmac.Equal([]byte(mine), []byte(sig)) {
+        w.WriteHeader(http.StatusUnauthorized)
+        return
+    }
+    ```
+  </Tab>
+  <Tab value="Python">
+    ```python
+    import hashlib, hmac
+
+    raw = request.get_data()          # bytes mentah, jangan di-parse dulu
+    ts = request.headers.get("X-PaymenKu-Timestamp", "")
+    sig = request.headers.get("X-PaymenKu-Signature", "")
+
+    mine = hmac.new(
+        webhook_secret.encode(),
+        ts.encode() + b"." + raw,
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(mine, sig):
+        return "", 401
+    ```
+  </Tab>
+</Tabs>
+
+## Aturan penanganan
+
+- **Balas 2xx secepatnya**, lalu proses di belakang. Balasan lambat memicu
+  pengiriman ulang.
+- **Idempoten per `trx_id`.** Pengiriman ulang itu normal; memproses dua kali
+  dapat menggandakan pengiriman barang atau saldo.
+- **Jangan percaya `amount` dari webhook sebagai nilai pesanan.** Cocokkan
+  dengan `reference_id` di sistem Anda.
+- **Periksa `is_sandbox`.** Webhook sandbox tidak boleh memicu pemenuhan
+  pesanan sungguhan.
+
+<Callout title="Zona waktu bisa berbeda" type="info">
+  `paid_at` dan `created_at` di payload webhook diserialisasi oleh framework
+  dan dapat memakai UTC (`Z`), sementara respons API memakai offset waktu
+  server (`+07:00`). Parse sebagai timestamp — jangan membandingkan string
+  waktu secara langsung.
+</Callout>
+
+## Pola penanganan yang aman
+
+```js
+app.post('/webhook/paymenku', express.raw({ type: 'application/json' }), async (req, res) => {
+  // 1. verifikasi tanda tangan (lihat contoh di atas)
+  if (!valid) return res.status(401).end();
+
+  // 2. balas dulu, proses kemudian
+  res.status(200).end();
+
+  const payload = JSON.parse(req.body);
+
+  // 3. idempoten per trx_id
+  if (await alreadyProcessed(payload.trx_id)) return;
+  await markProcessed(payload.trx_id);
+
+  // 4. hanya paid yang memenuhi pesanan
+  if (payload.status === 'paid' && !payload.is_sandbox) {
+    await fulfilOrder(payload.reference_id);
+  }
+});
+```
+
+<Callout title="Jangan bergantung pada return_url" type="warn">
+  Pelanggan bisa menutup tab sebelum kembali ke `return_url`. Hanya webhook
+  yang boleh menandai pesanan sebagai lunas.
+</Callout>

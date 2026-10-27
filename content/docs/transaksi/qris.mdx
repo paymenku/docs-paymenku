@@ -1,0 +1,88 @@
+---
+title: QRIS
+description: Satu kode QR yang dipindai dari aplikasi bank atau e-wallet apa pun.
+icon: QrCode
+---
+
+Pelanggan memindai satu kode QR dari aplikasi bank atau e-wallet apa pun yang
+mendukung QRIS.
+
+## Kanal yang tersedia
+
+| Kode | Nama | Minimum | Maksimum | Settlement |
+|---|---|---|---|---|
+| `qris` | QRIS | Rp 1.000 | Rp 10.000.000 | T+2 |
+| `qris_own` | QRIS Custom | Rp 1.000 | Rp 10.000.000 | T+2 |
+
+`qris_own` hanya muncul di daftar kanal bila akun Anda sudah punya registrasi
+QRIS Custom yang aktif. Registrasi ini berlaku di tingkat **akun**, sehingga
+satu NMID dipakai seluruh merchant di bawah akun yang sama.
+
+## Contoh permintaan
+
+```bash
+curl https://paymenku.com/api/v1/transaction/create \
+  --request POST \
+  --header 'Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "channel_code": "qris",
+    "amount": 15000,
+    "reference_id": "INV-20261027-001",
+    "customer_name": "Uji Dokumentasi",
+    "customer_email": "uji@example.com",
+    "return_url": "https://tokoanda.com/selesai",
+    "order_items": [{ "name": "Item Uji", "quantity": 1 }]
+  }'
+```
+
+## Bentuk payment_info
+
+```json
+{
+  "transaction_id": "QRIS-o4fH8BHfTObhwNrG",
+  "transaction_status": "pending",
+  "qr_url": "https://paymenku.com/api/qris/IDP202610271005522956",
+  "qr_string": "QRIS-IDP202610271005522956-15305-ZyyCBJkg",
+  "expiration_date": "2026-10-27T10:20:40+07:00"
+}
+```
+
+Dua cara menampilkan QR:
+
+- **`qr_url`** — gambar QR siap pakai. Paling mudah: taruh di `<img>`.
+- **`qr_string`** — payload QRIS mentah, bila Anda ingin merender QR sendiri
+  (misalnya untuk dicetak atau ditampilkan di perangkat kasir).
+
+```html
+<img src="https://paymenku.com/api/qris/IDP202610271005522956" alt="QRIS" />
+```
+
+## QRIS Custom
+
+Kanal `qris_own` memakai NMID merchant sendiri dan **tidak** mengembalikan
+`transaction_id` maupun `transaction_status`. Bentuknya:
+
+```json
+{
+  "qr_url": "https://paymenku.com/api/qris/IDP202610271006112345",
+  "qr_string": "00020101021226670016ID.CO.QRIS.WWW0118...",
+  "merchant_name": "Toko Anda",
+  "expiration_date": "2026-10-27T10:21:12+07:00"
+}
+```
+
+Karena itu, jangan membaca `transaction_id` tanpa memeriksa keberadaannya.
+`merchant_name` bisa dipakai untuk memastikan QR terdaftar atas nama merchant
+yang benar.
+
+## Yang perlu diperhatikan
+
+- **Masa berlaku pendek.** Hasil probe produksi menunjukkan sekitar 15 menit.
+  Baca `expiration_date`, jangan menanamkan angkanya.
+- **Nominal terikat pada QR.** QR berisi nominal; pelanggan tidak bisa
+  mengubahnya.
+- **Rentang nominal** Rp 1.000–Rp 10.000.000 per transaksi.
+- Dana masuk setelah kliring **T+2** hari kerja.
+- Fee QRIS standar adalah Rp 200 + 0,7% dan umumnya bermode `customer`,
+  sehingga nominal di `amount` respons lebih besar dari `amount` permintaan.

@@ -1,0 +1,155 @@
+---
+title: Membuat transaksi
+description: Satu endpoint untuk semua kanal — field wajib, fee, dan bentuk responsnya.
+icon: CreditCard
+---
+
+`POST /transaction/create` membuat transaksi pembayaran pada satu kanal.
+
+```bash
+curl https://paymenku.com/api/v1/transaction/create \
+  --request POST \
+  --header 'Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "channel_code": "qris",
+    "amount": 15000,
+    "reference_id": "INV-20261027-001",
+    "customer_name": "Budi Santoso",
+    "customer_email": "budi@example.com",
+    "return_url": "https://tokoanda.com/selesai"
+  }'
+```
+
+## Field
+
+| Field | Wajib | Keterangan |
+|---|---|---|
+| `channel_code` | Ya | Kode kanal dari `GET /payment-channels` |
+| `amount` | Ya | Nominal dasar dalam rupiah |
+| `reference_id` | Ya | Identitas unik pesanan di sistem Anda, maks. 255 karakter |
+| `customer_name` | Ya | Nama pelanggan |
+| `customer_email` | Ya | Email pelanggan |
+| `return_url` | Ya | Tujuan redirect setelah pembayaran selesai |
+| `customer_phone` | Tidak | **Wajib untuk OVO** |
+| `order_items` | Tidak | Rincian produk, maksimal 100 baris |
+
+Item pesanan berbentuk:
+
+```json
+{
+  "order_items": [
+    { "name": "Paket Internet 30 Hari", "quantity": 1 }
+  ]
+}
+```
+
+## Nominal dan fee
+
+`amount` yang Anda kirim adalah **nominal dasar**. Nominal yang akhirnya
+dibayar pelanggan bergantung pada `fee_mode` kanal:
+
+| `fee_mode` | Dibayar pelanggan | Diterima merchant |
+|---|---|---|
+| `merchant` | `amount` | `amount` − fee |
+| `customer` | `amount` + fee | `amount` |
+| `split` | `amount` + bagian pelanggan | `amount` − bagian merchant |
+
+Nilai yang dibebankan ke pelanggan dibulatkan ke rupiah utuh agar halaman
+bayar dan QR ke bank tidak pernah berbeda.
+
+`fee_mode` dapat berbeda antar kanal pada merchant yang sama — pada data
+produksi, `bca_va` bermode `merchant` sementara kanal lain `customer`. Jangan
+mengasumsikan satu mode untuk semua kanal.
+
+## Batas nominal
+
+Minimum global adalah Rp 1.000, tetapi tiap kanal punya batasnya sendiri
+(VA Rp 10.000, gerai ritel Rp 15.000). Pakai `min_amount` dan `max_amount`
+dari daftar kanal, jangan menanamkan angkanya.
+
+## Respons
+
+```json
+{
+  "status": "success",
+  "data": {
+    "trx_id": "IDP202610271005522956",
+    "reference_id": "INV-20261027-001",
+    "amount": "15305.00",
+    "status": "pending",
+    "pay_url": "https://paymenku.com/pay/IDP202610271005522956",
+    "payment_info": {
+      "transaction_id": "QRIS-o4fH8BHfTObhwNrG",
+      "transaction_status": "pending",
+      "qr_url": "https://paymenku.com/api/qris/IDP202610271005522956",
+      "qr_string": "QRIS-IDP202610271005522956-15305-ZyyCBJkg",
+      "expiration_date": "2026-10-27T10:20:40+07:00"
+    }
+  }
+}
+```
+
+| Field | Arti |
+|---|---|
+| `trx_id` | ID Paymenku. Prefix `IDP` untuk live, `SBOX` untuk sandbox |
+| `amount` | Nominal yang dibayar pelanggan, string desimal |
+| `status` | Selalu `pending` saat dibuat |
+| `pay_url` | Halaman pembayaran Paymenku; aman dibagikan ke pelanggan |
+| `payment_info` | Instruksi pembayaran; bentuknya berbeda per tipe kanal |
+
+## Bentuk payment_info per kanal
+
+Bentuknya bergantung tipe kanal **dan penyedia**:
+
+| Tipe kanal | Field |
+|---|---|
+| Virtual Account | `transaction_id`, `transaction_status`, `bank`, `va_number`, `expiration_date` |
+| QRIS | `transaction_id`, `transaction_status`, `qr_url`, `qr_string`, `expiration_date` |
+| QRIS Custom | `qr_url`, `qr_string`, `merchant_name`, `expiration_date` — **tanpa** `transaction_id` |
+| E-wallet | `transaction_id`, `transaction_status`, `checkout_url`, `expiration_date`; sebagian kanal menambahkan `payment_actions` atau `checkout_url_app` |
+| Gerai ritel | `transaction_id`, `transaction_status`, `store`, `payment_code`, `expiration_date` |
+
+Periksa field yang ada, jangan mengasumsikan satu bentuk. `transaction_id`
+tidak selalu tersedia — QRIS Custom tidak mengembalikannya.
+
+Pada transaksi sandbox, `payment_info` juga memuat `sandbox: true` dan
+`simulator_url`, sedangkan respons tingkat atas memuat `sandbox_mode` dan
+`sandbox_notice`.
+
+## Galat yang sering terjadi
+
+| HTTP | Arti | Contoh pesan |
+|---|---|---|
+| `400` | Kanal tidak aktif secara global | `Payment channel is inactive.` |
+| `403` | Kanal belum diaktifkan untuk merchant | `Payment channel is not enabled for your merchant account.` |
+| `403` | KYC belum disetujui | `Forbidden. KYC verification required before using live API.` |
+| `422` | Field wajib kosong | `Validation failed` + `errors` |
+| `422` | Nominal di luar batas | `Minimum amount for BCA Virtual Account is Rp 10.000` |
+| `429` | Melebihi kuota | `Rate limit exceeded.` |
+| `500` | Penyedia menolak permintaan | Pesan galat dari penyedia + `error_code` |
+
+Bentuk galat validasi:
+
+```json
+{
+  "status": "error",
+  "message": "Validation failed",
+  "errors": {
+    "amount": ["validation.required"],
+    "reference_id": ["validation.required"],
+    "customer_name": ["validation.required"],
+    "customer_email": ["validation.required"],
+    "return_url": ["validation.required"]
+  }
+}
+```
+
+## Panduan per metode
+
+- [Virtual Account](/docs/transaksi/virtual-account)
+- [QRIS](/docs/transaksi/qris)
+- [E-Wallet](/docs/transaksi/e-wallet)
+- [Gerai Ritel](/docs/transaksi/gerai-ritel)
+- [Batal & refund](/docs/transaksi/aksi)
+- [Status & riwayat](/docs/transaksi/status)

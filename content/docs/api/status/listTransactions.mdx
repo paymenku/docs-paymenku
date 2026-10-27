@@ -1,0 +1,28 @@
+---
+title: Daftar transaksi
+full: true
+_openapi:
+  preload:
+    - ./openapi.yaml
+  method: GET
+  webhook: false
+  toc: []
+  structuredData:
+    headings: []
+    contents:
+      - content: |
+          Daftar transaksi milik merchant, terbaru lebih dulu. Mendukung filter,
+          urutan, dan pagination.
+
+          Alias yang setara: `GET /merchant/transactions`.
+---
+
+export default function Layout(props) {
+  const { OpenAPIPage } = props.components ?? {};
+  return (
+    <>
+      {props.children}
+      <OpenAPIPage document="./openapi.yaml" operations={[{"path":"/transactions","method":"get"}]} showDescription />
+    </>
+  );
+}

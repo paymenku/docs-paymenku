@@ -1,0 +1,80 @@
+---
+title: Virtual Account
+description: Pelanggan mentransfer ke nomor VA dari ATM atau mobile banking.
+icon: Landmark
+---
+
+Pelanggan mentransfer ke nomor Virtual Account dari ATM, mobile banking, atau
+internet banking.
+
+Kirim `channel_code` salah satu kanal VA ke
+[Buat Transaksi](/docs/transaksi).
+
+## Kanal yang tersedia
+
+| Kode | Bank | Minimum | Maksimum | Settlement |
+|---|---|---|---|---|
+| `bca_va` | BCA | Rp 10.000 | Rp 10.000.000 | T+2 |
+| `bni_va` | BNI | Rp 10.000 | Rp 250.000.000 | T+2 |
+| `bri_va` | BRI | Rp 10.000 | Rp 250.000.000 | T+2 |
+| `mandiri_va` | Mandiri | Rp 10.000 | Rp 100.000.000 | T+2 |
+| `permata_va` | Permata | Rp 10.000 | Rp 50.000.000 | T+2 |
+| `maybank_va` | Maybank | Rp 10.000 | Rp 250.000.000 | T+2 |
+| `cimb_va` | CIMB | Rp 10.000 | Rp 50.000.000 | T+2 |
+| `bsi_va` | BSI | Rp 10.000 | Rp 250.000.000 | T+2 |
+| `muamalat_va` | Muamalat | Rp 10.000 | Rp 250.000.000 | T+2 |
+| `bnc_va` | Bank Neo | Rp 10.000 | Rp 250.000.000 | T+2 |
+| `ocbc_va` | OCBC | Rp 10.000 | Rp 250.000.000 | T+2 |
+| `danamon_va` | Danamon | Rp 10.000 | Rp 250.000.000 | T+2 |
+
+Daftar ini bisa berbeda per merchant — pastikan lewat
+[Kanal Pembayaran](/docs/api/kanal/listPaymentChannels).
+
+## Contoh permintaan
+
+```bash
+curl https://paymenku.com/api/v1/transaction/create \
+  --request POST \
+  --header 'Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "channel_code": "bca_va",
+    "amount": 50000,
+    "reference_id": "INV-20261027-002",
+    "customer_name": "Budi Santoso",
+    "customer_email": "budi@example.com",
+    "return_url": "https://tokoanda.com/selesai"
+  }'
+```
+
+## Bentuk payment_info
+
+```json
+{
+  "transaction_id": "VA-SJKwI45EbDeRyihz",
+  "transaction_status": "pending",
+  "bank": "BCA",
+  "va_number": "9999841942927",
+  "expiration_date": "2026-10-28T10:05:39+07:00"
+}
+```
+
+Tampilkan `va_number` dan `bank` kepada pelanggan. Panduan langkah per bank
+bisa diambil dari
+[Panduan Cara Bayar](/docs/api/kanal/getPaymentInstruction).
+
+## Yang perlu diperhatikan
+
+- **Masa berlaku lebih panjang** daripada QRIS — umumnya 24 jam.
+- **Nominal harus tepat.** Transfer yang kurang atau lebih tidak melunasi
+  tagihan.
+- **Rentang nominal** mengikuti tabel di atas; nominal di luar batas ditolak
+  `422`.
+- Dana masuk setelah kliring **T+2** hari kerja.
+- `flow_type` semuanya `direct`: pelanggan tidak diarahkan keluar.
+
+<Callout title="Fee dapat ditanggung merchant" type="info">
+  Pada data produksi, `bca_va` bermode `merchant` — fee dipotong dari saldo
+  Anda, bukan ditambahkan ke tagihan pelanggan. Periksa `fee_mode` dari daftar
+  kanal.
+</Callout>

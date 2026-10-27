@@ -1,0 +1,2143 @@
+openapi: 3.1.0
+
+info:
+  title: Paymenku API
+  version: "1.0.0"
+  summary: Payment gateway untuk bisnis di Indonesia — QRIS, Virtual Account, e-wallet, dan gerai ritel.
+  description: |
+    API Paymenku memakai REST, HTTPS, dan JSON.
+
+    ## Base URL
+
+    ```
+    https://paymenku.com/api/v1
+    ```
+
+    Live dan sandbox memakai base URL yang sama. Yang membedakan hanyalah kunci
+    API yang dipakai.
+
+    ## Dua bentuk envelope
+
+    Perlu diperhatikan karena **tidak seragam** antar endpoint.
+
+    Transaksi, kanal pembayaran, dan payment link memakai `status`:
+
+    ```json
+    { "status": "success", "data": { } }
+    { "status": "error", "message": "..." }
+    ```
+
+    Fee calculator, payment instruction, dan wallet memakai
+    `success`:
+
+    ```json
+    { "success": true, "data": { } }
+    { "success": false, "message": "..." }
+    ```
+
+    Periksa `status`/`success` dan juga kode HTTP; jangan hanya salah satu.
+
+    ## Nominal uang
+
+    Nominal dikirim sebagai **angka** (`15000`) tetapi dibalas sebagai **string
+    desimal** (`"15305.00"`) pada endpoint transaksi dan wallet. Parse sebagai
+    desimal — jangan sebagai float — agar tidak kehilangan presisi.
+
+    ## Mode sandbox
+
+    Kunci `sk_test_*` membuat transaksi ber-prefix `SBOX` dan tidak memindahkan
+    dana. Respons sandbox menambahkan `sandbox_mode`, `sandbox_notice`, dan
+    `simulator_url` untuk menyelesaikan pembayaran secara manual.
+  contact:
+    name: Dukungan Paymenku
+    url: https://paymenku.com/contact
+  license:
+    name: Hak cipta PT Limbungan Media Solusi
+    url: https://paymenku.com
+
+servers:
+  - url: https://paymenku.com/api/v1
+    description: Produksi (live dan sandbox)
+
+security:
+  - bearerAuth: []
+
+# Pengelompokan sidebar. Tag tanpa `paths` dirender sebagai halaman panduan —
+# itulah cara Getting Started dibuat tanpa endpoint.
+x-tagGroups:
+  - name: Getting Started
+    tags:
+      - Quick Start
+      - Authentication
+      - Rate Limiting
+      - Idempotency Key
+  - name: Transaksi
+    tags:
+      - Buat Transaksi
+      - Virtual Account
+      - QRIS
+      - E-Wallet
+      - Gerai Ritel
+      - Status & Riwayat
+      - Aksi Transaksi
+  - name: Kanal & Fee
+    tags:
+      - Kanal & Fee
+  - name: Payment Link
+    tags:
+      - Payment Link
+  - name: Wallet
+    tags:
+      - Wallet
+
+tags:
+  # ---------------------------------------------------------------- panduan
+  - name: Quick Start
+    description: |
+      Transaksi pertama Anda dalam empat langkah.
+
+      ### 1. Ambil kunci API
+
+      Masuk ke Dashboard Merchant, buka **Settings** lalu **API Keys**. Mulailah
+      dengan kunci sandbox (`sk_test_`) — tanpa dana nyata dan tanpa syarat KYC.
+
+      ### 2. Lihat kanal yang aktif
+
+      Jangan menuliskan kode kanal secara tetap di dalam kode Anda. Ambil dari
+      API, karena kanal aktif dan fee-nya bisa berubah per merchant:
+
+      ```bash
+      curl https://paymenku.com/api/v1/payment-channels \
+        --header 'Authorization: Bearer YOUR_APIKEY'
+      ```
+
+      ### 3. Buat transaksi
+
+      ```bash
+      curl https://paymenku.com/api/v1/transaction/create \
+        --request POST \
+        --header 'Authorization: Bearer YOUR_APIKEY' \
+        --header 'Content-Type: application/json' \
+        --data '{
+          "channel_code": "qris",
+          "amount": 15000,
+          "reference_id": "INV-20261027-001",
+          "customer_name": "Budi Santoso",
+          "customer_email": "budi@example.com",
+          "return_url": "https://tokoanda.com/selesai"
+        }'
+      ```
+
+      Arahkan pelanggan ke `pay_url` dari respons, atau pakai `payment_info`
+      untuk membangun halaman pembayaran sendiri.
+
+      ### 4. Terima webhook
+
+      Status resmi datang lewat webhook, **bukan** dari polling. Daftarkan URL
+      callback di dashboard, verifikasi tanda tangannya, lalu balas 2xx.
+
+      Lihat [Webhook](#tag/webhooks) untuk rumus tanda tangan dan contoh kode.
+
+      ### Menguji pembayaran di sandbox
+
+      Transaksi sandbox tidak pernah dibayar sungguhan. Respons memuat
+      `simulator_url` — buka tautan itu untuk menandai transaksi sebagai lunas
+      dan memicu webhook.
+
+      ### Urutan status
+
+      Transaksi selalu lahir `pending`. Hanya `paid` yang boleh memicu
+      pengiriman barang atau pembukaan layanan.
+
+  - name: Authentication
+    description: |
+      Setiap permintaan butuh kunci API pada header `Authorization`.
+
+      ```http
+      Authorization: Bearer YOUR_APIKEY
+      Content-Type: application/json
+      Accept: application/json
+      ```
+
+      ### Dua jenis kunci
+
+      | Prefix | Lingkungan | Dana nyata | Perlu KYC |
+      |---|---|---|---|
+      | `sk_live_` | Produksi | Ya | Ya |
+      | `sk_test_` | Sandbox | Tidak | Tidak |
+
+      Prefix selain keduanya langsung ditolak:
+
+      ```json
+      {
+        "status": "error",
+        "message": "Unauthorized. Invalid API Key format. Use sk_live_* or sk_test_*"
+      }
+      ```
+
+      ### Syarat kunci live
+
+      Kunci `sk_live_` baru aktif setelah **KYC pemilik akun disetujui**.
+      Sebelum itu:
+
+      ```json
+      {
+        "status": "error",
+        "message": "Forbidden. KYC verification required before using live API. Please complete KYC verification in your dashboard."
+      }
+      ```
+
+      Merchant yang dibuat khusus sandbox juga tidak bisa memakai kunci live —
+      buat merchant produksi setelah KYC selesai.
+
+      ### Menjaga kunci
+
+      - Simpan di environment variable atau secret manager.
+      - Jangan pernah menaruhnya di frontend, aplikasi mobile, atau repositori
+        publik. Kunci yang bocor dapat membuat transaksi atas nama Anda.
+      - Panggil API hanya dari server Anda sendiri.
+      - Rotasi kunci dari dashboard bila dicurigai bocor.
+
+  - name: Rate Limiting
+    description: |
+      Batas permintaan dihitung **per merchant**, memakai jendela satu menit.
+
+      | | |
+      |---|---|
+      | Bawaan | **120 permintaan / menit** per merchant |
+      | Tanpa kunci yang dikenali | 30 permintaan / menit per IP |
+      | Jendela | 60 detik |
+
+      Nilai bawaan dapat diubah operator Paymenku. Jangan menanamkannya di
+      dalam kode — baca dari header respons.
+
+      ### Header pada setiap respons
+
+      ```http
+      X-RateLimit-Limit: 120
+      X-RateLimit-Remaining: 119
+      X-RateLimit-Reset: 1793067181
+      ```
+
+      | Header | Arti |
+      |---|---|
+      | `X-RateLimit-Limit` | Kuota dalam jendela saat ini |
+      | `X-RateLimit-Remaining` | Sisa kuota |
+      | `X-RateLimit-Reset` | Unix timestamp saat kuota direset |
+
+      ### Saat batas terlampaui
+
+      Respons `429` beserta header `Retry-After`:
+
+      ```json
+      {
+        "status": "error",
+        "message": "Rate limit exceeded. Please retry after 42 seconds."
+      }
+      ```
+
+      ### Cara menanganinya
+
+      - **Hormati `Retry-After`.** Mencoba ulang lebih cepat hanya memperpanjang
+        blokir.
+      - **Pakai backoff eksponensial** dengan sedikit jitter, bukan interval
+        tetap.
+      - **Jangan polling status.** Satu webhook menggantikan ribuan panggilan
+        `check-status`.
+      - **Rem dari sisi klien** ketika `X-RateLimit-Remaining` mulai menipis.
+      - **Antrikan tugas massal** daripada mengirimnya serentak.
+
+      :::note
+      Permintaan yang gagal validasi tetap menghabiskan kuota. Validasi input
+      di sisi Anda sebelum memanggil API.
+      :::
+
+  - name: Idempotency Key
+    description: |
+      Permintaan `POST`, `PUT`, dan `PATCH` dapat membawa header
+      `Idempotency-Key` supaya percobaan ulang tidak menghasilkan transaksi
+      ganda.
+
+      ```http
+      Idempotency-Key: INV-20261027-001
+      ```
+
+      ### Cara kerjanya
+
+      1. Anda mengirim permintaan beserta kunci idempotensi.
+      2. Paymenku menyimpan responsnya selama **24 jam**.
+      3. Kunci yang sama dikirim lagi dalam 24 jam → permintaan **tidak**
+         diproses ulang; respons yang tersimpan diputar kembali, dengan header
+         `Idempotency-Replayed: true`.
+
+      | | |
+      |---|---|
+      | Format | String unik, maksimum 255 karakter |
+      | Masa simpan | 24 jam sejak permintaan pertama |
+      | Cakupan | Per merchant, per endpoint |
+      | Yang disimpan | Respons 2xx dan 4xx |
+      | Yang tidak disimpan | Respons 5xx — memang harus bisa dicoba ulang |
+
+      ### Contoh
+
+      ```bash
+      curl https://paymenku.com/api/v1/transaction/create \
+        --request POST \
+        --header 'Authorization: Bearer YOUR_APIKEY' \
+        --header 'Content-Type: application/json' \
+        --header 'Idempotency-Key: INV-20261027-001' \
+        --data '{
+          "channel_code": "qris",
+          "amount": 15000,
+          "reference_id": "INV-20261027-001",
+          "customer_name": "Budi Santoso",
+          "customer_email": "budi@example.com",
+          "return_url": "https://tokoanda.com/selesai"
+        }'
+      ```
+
+      ### Memilih nilai kunci
+
+      Pakai sesuatu yang **stabil untuk satu maksud pembayaran** — nomor
+      invoice, atau `reference_id` ditambah tanggal. Jangan memakai UUID yang
+      dibuat baru setiap percobaan: tiap percobaan akan dianggap permintaan
+      berbeda, dan justru itu yang ingin dicegah.
+
+      :::caution
+      Idempotensi **tidak** menggantikan `reference_id`. `reference_id` adalah
+      identitas pesanan di sistem Anda dan dipakai mencocokkan webhook;
+      `Idempotency-Key` hanya melindungi satu panggilan HTTP dari percobaan
+      ulang.
+      :::
+
+  # --------------------------------------------------- panduan per metode
+  - name: Virtual Account
+    description: |
+      Pelanggan mentransfer ke nomor Virtual Account dari ATM, mobile banking,
+      atau internet banking.
+
+      Kirim `channel_code` salah satu kanal VA ke
+      [Buat Transaksi](#tag/buat-transaksi/POST/transaction/create).
+
+      ### Kanal yang tersedia
+
+      | Kode | Bank | Minimum | Maksimum | Settlement |
+      |---|---|---|---|---|
+      | `bca_va` | BCA | Rp 10.000 | Rp 10.000.000 | T+2 |
+      | `bni_va` | BNI | Rp 10.000 | Rp 250.000.000 | T+2 |
+      | `bri_va` | BRI | Rp 10.000 | Rp 250.000.000 | T+2 |
+      | `mandiri_va` | Mandiri | Rp 10.000 | Rp 100.000.000 | T+2 |
+      | `permata_va` | Permata | Rp 10.000 | Rp 50.000.000 | T+2 |
+      | `cimb_va` | CIMB | Rp 10.000 | Rp 50.000.000 | T+2 |
+      | `danamon_va` | Danamon | Rp 10.000 | Rp 250.000.000 | T+2 |
+      | `bsi_va` | BSI | Rp 10.000 | Rp 250.000.000 | T+2 |
+      | `ocbc_va` | OCBC | Rp 10.000 | Rp 250.000.000 | T+2 |
+      | `maybank_va` | Maybank | Rp 10.000 | Rp 250.000.000 | T+2 |
+      | `muamalat_va` | Muamalat | Rp 10.000 | Rp 250.000.000 | T+2 |
+      | `bnc_va` | Bank Neo | Rp 10.000 | Rp 250.000.000 | T+2 |
+
+      Daftar ini bisa berbeda per merchant — pastikan lewat
+      [Kanal Pembayaran](#tag/kanal-fee/GET/payment-channels).
+
+      ### Bentuk payment_info
+
+      ```json
+      {
+        "transaction_id": "SANDBOX-VA-SJKwI45EbDeRyihz",
+        "transaction_status": "pending",
+        "bank": "BCA",
+        "va_number": "9999841942927",
+        "expiration_date": "2026-10-28T10:05:39+07:00"
+      }
+      ```
+
+      Tampilkan `va_number` dan `bank` kepada pelanggan. Panduan langkah per
+      bank bisa diambil dari
+      [Panduan Cara Bayar](#tag/kanal-fee/GET/payment/instruction).
+
+      ### Yang perlu diperhatikan
+
+      - **Masa berlaku lebih panjang** daripada QRIS — umumnya 24 jam.
+      - **Nominal harus tepat.** Transfer yang kurang atau lebih tidak
+        melunasi tagihan.
+      - Dana masuk setelah kliring **T+2** hari kerja.
+      - `flow_type` semuanya `direct`: pelanggan tidak diarahkan keluar.
+
+  - name: QRIS
+    description: |
+      Pelanggan memindai satu kode QR dari aplikasi bank atau e-wallet apa pun
+      yang mendukung QRIS.
+
+      ### Kanal yang tersedia
+
+      | Kode | Nama | Minimum | Maksimum | Settlement |
+      |---|---|---|---|---|
+      | `qris` | QRIS | Rp 1.000 | Rp 10.000.000 | T+2 |
+      | `qris_own` | QRIS Custom | Rp 1.000 | Rp 10.000.000 | T+2 |
+
+      `qris_own` hanya muncul di daftar kanal bila akun Anda sudah punya
+      registrasi QRIS Custom yang aktif. Registrasi ini berlaku di tingkat
+      **akun**, sehingga satu NMID dipakai seluruh merchant di bawah akun yang
+      sama.
+
+      ### Bentuk payment_info
+
+      ```json
+      {
+        "transaction_id": "SANDBOX-QRIS-o4fH8BHfTObhwNrG",
+        "transaction_status": "pending",
+        "qr_url": "https://paymenku.com/api/qris/SBOX202610271005522956",
+        "qr_string": "SANDBOX-QRIS-SBOX202610271005522956-15305-ZyyCBJkg",
+        "expiration_date": "2026-10-27T10:20:40+07:00"
+      }
+      ```
+
+      Dua cara menampilkan QR:
+
+      - **`qr_url`** — gambar QR siap pakai. Paling mudah: taruh di `<img>`.
+      - **`qr_string`** — payload QRIS mentah, bila Anda ingin merender QR
+        sendiri (misalnya untuk dicetak atau ditampilkan di perangkat kasir).
+
+      ### Yang perlu diperhatikan
+
+      - **Masa berlaku pendek.** Hasil probe produksi menunjukkan sekitar 15
+        menit. Baca `expiration_date`, jangan menanamkan angkanya.
+      - **Nominal terikat pada QR.** QR berisi nominal; pelanggan tidak bisa
+        mengubahnya.
+      - **Rentang nominal** Rp 1.000–Rp 10.000.000 per transaksi.
+      - Dana masuk setelah kliring **T+2** hari kerja.
+
+  - name: E-Wallet
+    description: |
+      Pelanggan membayar dari saldo dompet digitalnya.
+
+      ### Kanal yang tersedia
+
+      | Kode | Nama | Minimum | Maksimum | Settlement |
+      |---|---|---|---|---|
+      | `dana` | DANA | Rp 1.000 | Rp 20.000.000 | T+2 hari kerja |
+      | `ovo` | OVO | Rp 1.000 | Rp 20.000.000 | T+2 hari kerja |
+      | `shopeepay` | ShopeePay | Rp 1.000 | Rp 20.000.000 | T+2 hari kerja |
+
+      ### Bentuk payment_info
+
+      ```json
+      {
+        "transaction_id": "SANDBOX-EWALLET-qTmRYRBCAGbRa4Fe",
+        "transaction_status": "pending",
+        "checkout_url": "https://...",
+        "expiration_date": "2026-10-27T10:20:43+07:00"
+      }
+      ```
+
+      Arahkan pelanggan ke `checkout_url`. Setelah selesai, penyedia
+      mengembalikannya ke `return_url` yang Anda kirim saat membuat transaksi.
+
+      ### Yang perlu diperhatikan
+
+      - **OVO mewajibkan `customer_phone`.** Tanpa itu transaksi gagal.
+      - **`return_url` bukan konfirmasi pembayaran.** Pelanggan bisa menutup
+        tab sebelum kembali. Perlakukan webhook sebagai satu-satunya sumber
+        status.
+      - Fee e-wallet adalah yang tertinggi: 3% + Rp 200. Periksa dengan
+        [Hitung Fee](#tag/kanal-fee/GET/merchant/fee-calculator).
+      - Dana masuk setelah kliring **T+2** hari kerja.
+
+  - name: Gerai Ritel
+    description: |
+      Pelanggan membayar tunai di kasir minimarket memakai kode bayar.
+      Berguna untuk pelanggan tanpa rekening bank.
+
+      ### Kanal yang tersedia
+
+      | Kode | Gerai | Minimum | Maksimum |
+      |---|---|---|---|
+      | `indomaret` | Indomaret | Rp 15.000 | Rp 2.500.000 |
+      | `alfamart` | Alfamart | Rp 15.000 | Rp 2.500.000 |
+
+      Nominal di atas Rp 2.500.000 ditolak `422`.
+
+      ### Bentuk payment_info
+
+      ```json
+      {
+        "transaction_id": "SANDBOX-RETAIL-INDOMARET-61bbead9",
+        "transaction_status": "pending",
+        "store": "INDOMARET",
+        "payment_code": "SBX795EFE83",
+        "expiration_date": "2026-10-28T10:05:49+07:00"
+      }
+      ```
+
+      :::caution
+      Kode bayar berada di `payment_code`, **bukan** `pay_code`, dan nama gerai
+      di `store`. Bentuk ini berbeda dari kanal lain.
+      :::
+
+      ### Yang perlu diperhatikan
+
+      - Tampilkan `payment_code` **dan** `store`; pelanggan menyebutkan
+        keduanya di kasir.
+      - Fee tetap Rp 5.000 — relatif besar untuk nominal kecil.
+      - Masa berlaku panjang (sekitar 24 jam), karena pelanggan perlu waktu
+        mendatangi gerai.
+      - Pembayaran bergantung jam operasional gerai.
+
+  # ------------------------------------------------------------- operasi
+  - name: Buat Transaksi
+    description: Membuat transaksi pembayaran pada satu kanal.
+  - name: Status & Riwayat
+    description: Memeriksa status transaksi dan menelusuri riwayatnya.
+  - name: Aksi Transaksi
+    description: Membatalkan transaksi yang masih pending dan mengembalikan dana transaksi yang sudah dibayar.
+  - name: Kanal & Fee
+    description: Kanal pembayaran aktif, perhitungan fee, dan panduan cara bayar.
+  - name: Payment Link
+    description: |
+      Tautan checkout. Berbeda dari membuat transaksi: merchant **tidak**
+      memilih kanal — pelanggan yang memilih di halaman pembayaran.
+  - name: Wallet
+    description: Saldo merchant dan saldo dalam kliring.
+  - name: Webhooks
+    description: Notifikasi perubahan status pembayaran.
+
+paths:
+  /transaction/create:
+    post:
+      tags: [Buat Transaksi]
+      summary: Buat transaksi
+      operationId: createTransaction
+      description: |
+        Membuat transaksi pembayaran pada satu kanal.
+
+        `amount` yang Anda kirim adalah **nominal dasar**. Nominal yang
+        akhirnya dibayar pelanggan bergantung pada `fee_mode` kanal:
+
+        | `fee_mode` | Dibayar pelanggan | Diterima merchant |
+        |---|---|---|
+        | `merchant` | `amount` | `amount` − fee |
+        | `customer` | `amount` + fee | `amount` |
+        | `split` | `amount` + bagian pelanggan | `amount` − bagian merchant |
+
+        Nilai yang dibebankan ke pelanggan dibulatkan ke rupiah utuh agar
+        halaman bayar dan QR ke bank tidak pernah berbeda.
+
+        Isi `payment_info` **berbeda tiap tipe kanal**. Panduan per metode:
+        [Virtual Account](#tag/virtual-account), [QRIS](#tag/qris),
+        [E-Wallet](#tag/e-wallet), [Gerai Ritel](#tag/gerai-ritel).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BuatTransaksi"
+            examples:
+              qris:
+                summary: QRIS
+                value:
+                  channel_code: qris
+                  amount: 15000
+                  reference_id: INV-20261027-001
+                  customer_name: Uji Dokumentasi
+                  customer_email: uji@example.com
+                  return_url: https://tokoanda.com/selesai
+                  order_items:
+                    - name: Item Uji
+                      quantity: 1
+              virtual_account:
+                summary: Virtual Account BCA
+                value:
+                  channel_code: bca_va
+                  amount: 50000
+                  reference_id: INV-20261027-002
+                  customer_name: Budi Santoso
+                  customer_email: budi@example.com
+                  return_url: https://tokoanda.com/selesai
+              ewallet_ovo:
+                summary: E-wallet OVO (butuh nomor HP)
+                value:
+                  channel_code: ovo
+                  amount: 25000
+                  reference_id: INV-20261027-003
+                  customer_name: Siti Aminah
+                  customer_email: siti@example.com
+                  customer_phone: "08123456789"
+                  return_url: https://tokoanda.com/selesai
+              gerai_ritel:
+                summary: Gerai ritel Indomaret
+                value:
+                  channel_code: indomaret
+                  amount: 20000
+                  reference_id: INV-20261027-004
+                  customer_name: Ahmad Fauzi
+                  customer_email: ahmad@example.com
+                  return_url: https://tokoanda.com/selesai
+      responses:
+        "200":
+          description: Transaksi dibuat dengan status `pending`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResponsBuatTransaksi"
+              examples:
+                qris:
+                  summary: QRIS
+                  value:
+                    status: success
+                    data:
+                      trx_id: IDP202610271005522956
+                      reference_id: INV-20261027-001
+                      amount: "15305.00"
+                      status: pending
+                      pay_url: https://paymenku.com/pay/IDP202610271005522956
+                      payment_info:
+                        transaction_id: 6a1f0c2e-9d4b-4f7a-8c11-2b7e5d9a1c33
+                        transaction_status: pending
+                        qr_url: https://paymenku.com/api/qris/IDP202610271005522956
+                        qr_string: 00020101021226670016ID.CO.QRIS.WWW01189360091400000000000215ID10240000000000303UMI51440014ID.CO.QRIS.WWW5204481453033605802ID5910Toko Anda6013Jakarta Pusat61051034062070703A0163041A2B
+                        expiration_date: "2026-10-27T10:20:40+07:00"
+                qris_custom:
+                  summary: QRIS Custom — tanpa transaction_id
+                  value:
+                    status: success
+                    data:
+                      trx_id: IDP202610271006112345
+                      reference_id: INV-20261027-005
+                      amount: "15305.00"
+                      status: pending
+                      pay_url: https://paymenku.com/pay/IDP202610271006112345
+                      payment_info:
+                        qr_url: https://paymenku.com/api/qris/IDP202610271006112345
+                        qr_string: 00020101021226670016ID.CO.QRIS.WWW01189360091400000000000215ID10240000000000303UMI51440014ID.CO.QRIS.WWW5204481453033605802ID5910Toko Anda6013Jakarta Pusat61051034062070703A0163041A2B
+                        merchant_name: Toko Anda
+                        expiration_date: "2026-10-27T10:21:12+07:00"
+                virtual_account:
+                  summary: Virtual Account
+                  value:
+                    status: success
+                    data:
+                      trx_id: IDP202610271005847202
+                      reference_id: INV-20261027-002
+                      amount: "50000.00"
+                      status: pending
+                      pay_url: https://paymenku.com/pay/IDP202610271005847202
+                      payment_info:
+                        transaction_id: 6a1f0c2e-9d4b-4f7a-8c11-2b7e5d9a1c34
+                        transaction_status: pending
+                        bank: BCA
+                        va_number: "9999841942927"
+                        expiration_date: "2026-10-28T10:05:39+07:00"
+                ewallet:
+                  summary: E-wallet
+                  value:
+                    status: success
+                    data:
+                      trx_id: IDP202610271005426934
+                      reference_id: INV-20261027-003
+                      amount: "25950.00"
+                      status: pending
+                      pay_url: https://paymenku.com/pay/IDP202610271005426934
+                      payment_info:
+                        transaction_id: 6a1f0c2e-9d4b-4f7a-8c11-2b7e5d9a1c35
+                        transaction_status: pending
+                        checkout_url: https://ewallet.example.com/checkout/abc123
+                        expiration_date: "2026-10-27T10:20:43+07:00"
+                gerai_ritel:
+                  summary: Gerai ritel
+                  value:
+                    status: success
+                    data:
+                      trx_id: IDP202610271005631016
+                      reference_id: INV-20261027-004
+                      amount: "20000.00"
+                      status: pending
+                      pay_url: https://paymenku.com/pay/IDP202610271005631016
+                      payment_info:
+                        transaction_id: 6a1f0c2e-9d4b-4f7a-8c11-2b7e5d9a1c36
+                        transaction_status: pending
+                        store: INDOMARET
+                        payment_code: "7952837461"
+                        expiration_date: "2026-10-28T10:05:49+07:00"
+        "400":
+          description: Kanal tidak aktif secara global.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                status: error
+                message: Payment channel is inactive.
+        "401":
+          $ref: "#/components/responses/TidakTerotorisasi"
+        "403":
+          description: Kanal belum diaktifkan untuk merchant ini, atau KYC belum disetujui.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                kanal_mati:
+                  summary: Kanal belum diaktifkan (respons nyata)
+                  value:
+                    status: error
+                    message: Payment channel is not enabled for your merchant account.
+                kyc:
+                  summary: KYC belum disetujui
+                  value:
+                    status: error
+                    message: Forbidden. KYC verification required before using live API. Please complete KYC verification in your dashboard.
+        "422":
+          description: Validasi gagal, atau nominal di luar batas kanal.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorValidasi" }
+              examples:
+                field_kosong:
+                  summary: Field wajib kosong (respons nyata)
+                  value:
+                    status: error
+                    message: Validation failed
+                    errors:
+                      amount: ["validation.required"]
+                      reference_id: ["validation.required"]
+                      customer_name: ["validation.required"]
+                      customer_email: ["validation.required"]
+                      return_url: ["validation.required"]
+                kanal_salah:
+                  summary: channel_code tidak dikenal (respons nyata)
+                  value:
+                    status: error
+                    message: Validation failed
+                    errors:
+                      channel_code: ["validation.exists"]
+                di_bawah_minimum:
+                  summary: Nominal di bawah batas kanal
+                  value:
+                    status: error
+                    message: "Minimum amount for BCA Virtual Account is Rp 10.000"
+        "429":
+          $ref: "#/components/responses/TerlaluBanyakRequest"
+        "500":
+          description: Penyedia pembayaran menolak permintaan atau mengalami galat.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, examples: [error] }
+                  message: { type: string, examples: [Payment provider error: Unknown error] }
+                  error_code: { type: [string, "null"] }
+              example:
+                status: error
+                message: "Payment provider error: Unknown error"
+
+  /check-status/{order_id}:
+    get:
+      tags: [Status & Riwayat]
+      summary: Cek status transaksi
+      operationId: checkStatus
+      description: |
+        Mencari satu transaksi berdasarkan `trx_id` **atau** `reference_id` —
+        keduanya diterima pada parameter yang sama.
+
+        Gunakan ini untuk rekonsiliasi, bukan sebagai pengganti webhook.
+        Status resmi tetap datang lewat webhook.
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          description: "`trx_id` Paymenku atau `reference_id` milik Anda."
+          schema: { type: string }
+          examples:
+            trx_id:
+              value: SBOX202610270912228342
+            reference_id:
+              value: INV-20261027-001
+      responses:
+        "200":
+          description: Detail transaksi.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResponsTransaksi"
+              example:
+                status: success
+                data:
+                  trx_id: SBOX202610270912228342
+                  reference_id: INV-20261027-001
+                  amount: "15305.00"
+                  total_fee: "305.00"
+                  amount_received: "15000.00"
+                  status: pending
+                  is_sandbox: true
+                  customer_name: Uji Dokumentasi
+                  customer_email: uji@example.com
+                  customer_phone: null
+                  order_items:
+                    - name: Item Uji
+                      quantity: 1
+                  payment_channel:
+                    code: qris
+                    name: QRIS
+                    type: qris
+                  pay_url: https://paymenku.com/pay/SBOX202610270912228342
+                  paid_at: null
+                  created_at: "2026-10-27T09:12:04+07:00"
+                  updated_at: "2026-10-27T09:12:05+07:00"
+        "401":
+          $ref: "#/components/responses/TidakTerotorisasi"
+        "404":
+          description: Transaksi tidak ada, atau milik merchant lain.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                status: error
+                message: Transaction not found
+        "429":
+          $ref: "#/components/responses/TerlaluBanyakRequest"
+
+  /transactions:
+    get:
+      tags: [Status & Riwayat]
+      summary: Daftar transaksi
+      operationId: listTransactions
+      description: |
+        Daftar transaksi milik merchant, terbaru lebih dulu. Mendukung filter,
+        urutan, dan pagination.
+
+        Alias yang setara: `GET /merchant/transactions`.
+      parameters:
+        - name: page
+          in: query
+          description: Halaman, mulai dari 1.
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: per_page
+          in: query
+          description: Jumlah baris per halaman.
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/StatusTransaksi" }
+        - name: channel_code
+          in: query
+          description: Harus kode kanal yang ada.
+          schema: { type: string, examples: [qris] }
+        - name: reference_id
+          in: query
+          description: Cocok persis dengan referensi milik Anda.
+          schema: { type: string, maxLength: 255 }
+        - name: date_from
+          in: query
+          schema: { type: string, format: date }
+        - name: date_to
+          in: query
+          description: Tidak boleh lebih awal dari `date_from`.
+          schema: { type: string, format: date }
+        - name: is_sandbox
+          in: query
+          schema: { type: boolean }
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [created_at, amount, status, paid_at]
+            default: created_at
+        - name: sort_order
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        "200":
+          description: Daftar transaksi beserta pagination.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResponsDaftarTransaksi"
+              example:
+                status: success
+                data:
+                  - trx_id: SBOX202603221216116099
+                    reference_id: INV-20260322-118
+                    amount: "10270.00"
+                    total_fee: "270.00"
+                    amount_received: "10000.00"
+                    status: expired
+                    is_sandbox: true
+                    customer_name: Pelanggan Uji
+                    customer_email: pelanggan@example.com
+                    customer_phone: null
+                    order_items: null
+                    payment_channel:
+                      code: qris
+                      name: QRIS
+                      type: qris
+                    pay_url: https://paymenku.com/pay/SBOX202603221216116099
+                    paid_at: null
+                    created_at: "2026-03-22T12:16:26+07:00"
+                    updated_at: "2026-03-25T18:22:15+07:00"
+                pagination:
+                  current_page: 1
+                  per_page: 2
+                  total: 47
+                  total_pages: 24
+                  has_more: true
+        "401":
+          $ref: "#/components/responses/TidakTerotorisasi"
+        "422":
+          $ref: "#/components/responses/ValidasiGagal"
+        "429":
+          $ref: "#/components/responses/TerlaluBanyakRequest"
+
+  /payment-channels:
+    get:
+      tags: [Kanal & Fee]
+      summary: Daftar kanal pembayaran
+      operationId: listPaymentChannels
+      description: |
+        Kanal yang **aktif untuk merchant Anda**, lengkap dengan fee efektif dan
+        batas nominal. Ambil daftar ini saat menyusun halaman checkout; jangan
+        menanamkan kode kanal di dalam kode Anda.
+
+        `fee_mode` dapat berbeda antar kanal pada merchant yang sama — pada data
+        produksi, `bca_va` bermode `merchant` sementara kanal lain `customer`.
+
+        Kanal `qris_own` (QRIS Custom) hanya tampil bila akun sudah punya
+        registrasi QRIS aktif.
+
+        Alias yang setara: `GET /merchant/payment-channel`.
+      responses:
+        "200":
+          description: Daftar kanal aktif.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, examples: [success] }
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/KanalPembayaran" }
+              example:
+                status: success
+                data:
+                  - code: bca_va
+                    name: BCA Virtual Account
+                    type: va
+                    group: Virtual Account
+                    flow_type: direct
+                    icon: https://paymenku.com/storage/channel-icons/bca_va.png
+                    fee_mode: merchant
+                    fee_flat: 4440
+                    fee_percent: 0.2
+                    min_amount: 10000
+                    max_amount: 10000000
+                  - code: qris
+                    name: QRIS
+                    type: qris
+                    group: QRIS
+                    flow_type: direct
+                    icon: https://paymenku.com/storage/channel-icons/qris-baru.png
+                    fee_mode: customer
+                    fee_flat: 200
+                    fee_percent: 0.7
+                    min_amount: 1000
+                    max_amount: 10000000
+                  - code: indomaret
+                    name: Indomaret
+                    type: cstore
+                    group: Convenience Store
+                    flow_type: direct
+                    icon: https://paymenku.com/storage/channel-icons/indomaret.png
+                    fee_mode: customer
+                    fee_flat: 5000
+                    fee_percent: 0
+                    min_amount: 15000
+                    max_amount: 2500000
+        "401":
+          $ref: "#/components/responses/TidakTerotorisasi"
+
+  /merchant/fee-calculator:
+    get:
+      tags: [Kanal & Fee]
+      summary: Hitung fee
+      operationId: calculateFee
+      description: |
+        Menghitung fee untuk satu nominal, sebelum transaksi dibuat. Tanpa
+        `code`, seluruh kanal aktif dikembalikan — berguna untuk menampilkan
+        perbandingan biaya di halaman checkout.
+
+        `total_fee` sudah dipecah menjadi bagian merchant dan bagian pelanggan
+        sesuai `fee_mode`, jadi Anda tidak perlu menghitung ulang.
+      parameters:
+        - name: amount
+          in: query
+          required: true
+          description: Nominal dasar dalam rupiah.
+          schema: { type: integer, minimum: 1, examples: [100000] }
+        - name: code
+          in: query
+          description: Batasi ke satu kanal. Harus kode yang ada.
+          schema: { type: string, examples: [qris] }
+      responses:
+        "200":
+          description: Rincian fee per kanal.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResponsHitungFee"
+              example:
+                success: true
+                data:
+                  - code: qris
+                    name: QRIS
+                    group: QRIS
+                    type: qris
+                    flow: direct
+                    fee:
+                      flat: 200
+                      percent: 0.7
+                    total_fee:
+                      merchant: 0
+                      customer: 900
+                    fee_mode: customer
+                    limits:
+                      min_amount: 1000
+                      max_amount: 10000000
+                      min_expiry_minutes: 1440
+                      max_expiry_minutes: 1440
+        "401":
+          $ref: "#/components/responses/TidakTerotorisasi"
+        "422":
+          $ref: "#/components/responses/ValidasiLaravel"
+
+  /payment/instruction:
+    get:
+      tags: [Kanal & Fee]
+      summary: Panduan cara bayar
+      operationId: getPaymentInstruction
+      description: |
+        Langkah pembayaran per kanal, siap ditampilkan ke pelanggan. Bila
+        `pay_code` dan `amount` diisi, keduanya disubstitusi ke dalam teks.
+
+        Langkah berisi tag HTML sederhana (`<b>`) untuk penekanan. Bila Anda
+        merender sebagai teks biasa, bersihkan tag-nya sendiri.
+      parameters:
+        - name: code
+          in: query
+          required: true
+          description: Kode kanal. Harus kode yang ada.
+          schema: { type: string, examples: [bca_va] }
+        - name: pay_code
+          in: query
+          description: Nomor VA atau kode bayar; disubstitusi ke langkah.
+          schema: { type: string, maxLength: 64, examples: ["1234567890"] }
+        - name: amount
+          in: query
+          description: Nominal; diformat sebagai rupiah di dalam langkah.
+          schema: { type: integer, minimum: 0, examples: [100000] }
+        - name: allow_html
+          in: query
+          description: |
+            `1` (bawaan) membiarkan tag seperti `<b>` di dalam langkah; `0`
+            menghapus seluruh tag.
+          schema: { type: string, enum: ["0", "1"], default: "1" }
+      responses:
+        "200":
+          description: Daftar panduan, satu per metode.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title: { type: string }
+                        steps:
+                          type: array
+                          items: { type: string }
+              example:
+                success: true
+                message: ""
+                data:
+                  - title: ATM BCA
+                    steps:
+                      - Masukkan kartu ATM BCA dan PIN
+                      - "Pilih menu <b>Transaksi Lainnya</b> > <b>Transfer</b> > <b>ke Rek BCA Virtual Account</b>"
+                      - "Masukkan Nomor Virtual Account (<b>1234567890</b>)"
+                      - "Konfirmasi nominal Rp 100.000, jika sesuai pilih <b>YA</b>"
+                      - Transaksi sukses, simpan struk Anda
+                  - title: BCA mobile (m-BCA)
+                    steps:
+                      - Login ke aplikasi BCA mobile
+                      - "Pilih menu <b>m-Transfer</b> > <b>BCA Virtual Account</b>"
+                      - "Masukkan Nomor Virtual Account (<b>1234567890</b>)"
+                      - Konfirmasi nominal Rp 100.000
+                      - Masukkan PIN m-BCA
+                      - Transaksi sukses
+        "401":
+          $ref: "#/components/responses/TidakTerotorisasi"
+        "422":
+          $ref: "#/components/responses/ValidasiLaravel"
+
+  /payment-link/create:
+    post:
+      tags: [Payment Link]
+      summary: Buat payment link
+      operationId: createPaymentLink
+      description: |
+        Membuat tautan pembayaran. Merchant **tidak** memilih kanal — pelanggan
+        memilih sendiri di halaman checkout.
+
+        Tautan ini melahirkan transaksi nyata, sehingga **kunci sandbox
+        ditolak** dengan 403. Pakai kunci live.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BuatPaymentLink"
+            examples:
+              dasar:
+                summary: Tagihan sekali pakai
+                value:
+                  amount: 150000
+                  title: Invoice #1024
+                  customer_name: Budi Santoso
+                  customer_email: budi@example.com
+                  return_url: https://tokoanda.com/selesai
+                  order_items:
+                    - name: Paket Internet 30 Hari
+                      quantity: 1
+      responses:
+        "201":
+          description: Tautan dibuat.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, examples: [success] }
+                  message: { type: string }
+                  data: { $ref: "#/components/schemas/PaymentLink" }
+              example:
+                status: success
+                message: Payment link berhasil dibuat
+                data:
+                  link_id: PLAB12CD34EF56
+                  payment_url: https://paymenku.com/link/PLAB12CD34EF56
+                  title: Invoice #1024
+                  description: null
+                  amount: 150000
+                  items:
+                    - name: Paket Internet 30 Hari
+                      quantity: 1
+                  status: active
+                  is_single_use: true
+                  expires_at: "2026-10-28T09:00:00+07:00"
+                  expires_in_minutes: 1440
+                  customer_name: Budi Santoso
+                  customer_email: budi@example.com
+                  return_url: https://tokoanda.com/selesai
+                  created_at: "2026-10-27T09:00:00+07:00"
+        "401":
+          $ref: "#/components/responses/TidakTerotorisasi"
+        "403":
+          description: Kunci sandbox tidak diizinkan (respons nyata).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                status: error
+                message: Payment Link belum tersedia untuk kunci uji (sk_test_*). Gunakan kunci live.
+        "422":
+          $ref: "#/components/responses/ValidasiGagal"
+
+  /payment-link/{linkId}:
+    get:
+      tags: [Payment Link]
+      summary: Detail payment link
+      operationId: showPaymentLink
+      description: |
+        Detail tautan beserta `tersedia` (masih bisa dibayar atau tidak) dan
+        transaksi yang sudah lahir dari tautan ini.
+      parameters:
+        - name: linkId
+          in: path
+          required: true
+          schema: { type: string, examples: [PLAB12CD34EF56] }
+      responses:
+        "200":
+          description: Detail tautan.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, examples: [success] }
+                  data:
+                    allOf:
+                      - $ref: "#/components/schemas/PaymentLink"
+                      - type: object
+                        properties:
+                          tersedia:
+                            type: boolean
+                            description: Masih aktif, belum kedaluwarsa, dan belum terpakai.
+                          transaksi:
+                            type: [object, "null"]
+                            properties:
+                              trx_id: { type: string }
+                              status: { $ref: "#/components/schemas/StatusTransaksi" }
+                              paid_at: { type: [string, "null"], format: date-time }
+              example:
+                status: success
+                data:
+                  link_id: PLAB12CD34EF56
+                  payment_url: https://paymenku.com/link/PLAB12CD34EF56
+                  title: Invoice #1024
+                  amount: 150000
+                  status: active
+                  is_single_use: true
+                  expires_at: "2026-10-28T09:00:00+07:00"
+                  tersedia: true
+                  transaksi:
+                    trx_id: IDP202610271040123456
+                    status: pending
+                    paid_at: null
+        "401":
+          $ref: "#/components/responses/TidakTerotorisasi"
+        "404":
+          description: Tautan tidak ada, atau milik merchant lain.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                status: error
+                message: Payment link tidak ditemukan.
+
+  /transaction/cancel:
+    post:
+      tags: [Aksi Transaksi]
+      summary: Batalkan transaksi
+      operationId: cancelTransaction
+      description: |
+        Membatalkan transaksi yang masih `pending`.
+
+        - Hanya transaksi `pending` yang dapat dibatalkan; status lain dibalas `422`.
+        - Di produksi, pembatalan hanya tersedia untuk sebagian transaksi QRIS.
+          Kanal lain dibalas `422`.
+        - Transaksi sandbox dibatalkan secara lokal tanpa memanggil penyedia.
+
+        Status berubah menjadi `cancelled`. Webhook `payment.status_updated`
+        tetap menjadi sumber status resmi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [trx_id]
+              properties:
+                trx_id:
+                  type: string
+                  description: ID transaksi Paymenku (prefix `IDP` atau `SBOX`).
+                  examples: [IDP202610271005522956]
+            example:
+              trx_id: IDP202610271005522956
+      responses:
+        "200":
+          description: Transaksi dibatalkan.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, examples: [success] }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      trx_id: { type: string }
+                      status: { type: string, examples: [cancelled] }
+              examples:
+                produksi:
+                  summary: Dibatalkan lewat penyedia
+                  value:
+                    status: success
+                    message: Transaction cancelled successfully
+                    data:
+                      trx_id: IDP202610271005522956
+                      status: cancelled
+                sandbox:
+                  summary: Transaksi sandbox
+                  value:
+                    status: success
+                    message: Transaction cancelled (sandbox)
+                    data:
+                      trx_id: SBOX202610271005522956
+                      status: cancelled
+        "401":
+          $ref: "#/components/responses/TidakTerotorisasi"
+        "404":
+          description: Transaksi tidak ada, atau milik merchant lain.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                status: error
+                message: Transaction not found
+        "422":
+          description: Transaksi tidak dapat dibatalkan pada status atau kanal ini.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                status_salah:
+                  summary: Bukan transaksi pending
+                  value:
+                    status: error
+                    message: "Cannot cancel transaction with status 'paid'. Only pending transactions can be cancelled."
+                penyedia_salah:
+                  summary: Kanal tidak mendukung pembatalan
+                  value:
+                    status: error
+                    message: Cancel is not supported for this transaction.
+                tipe_salah:
+                  summary: Bukan QRIS
+                  value:
+                    status: error
+                    message: Cancel is only supported for QRIS payment type.
+                referensi_hilang:
+                  summary: Referensi penyedia tidak ada
+                  value:
+                    status: error
+                    message: "Cannot cancel: missing provider reference (platformTradeNo)."
+        "429":
+          $ref: "#/components/responses/TerlaluBanyakRequest"
+        "500":
+          description: Penyedia gagal membatalkan transaksi.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, examples: [error] }
+                  message: { type: string }
+                  error_code: { type: [string, "null"] }
+              example:
+                status: error
+                message: "Failed to cancel transaction: Unknown error"
+
+  /transaction/refund:
+    post:
+      tags: [Aksi Transaksi]
+      summary: Refund transaksi
+      operationId: refundTransaction
+      description: |
+        Mengembalikan dana transaksi yang sudah `paid`.
+
+        - Hanya transaksi `paid` yang dapat di-refund; status lain dibalas `422`.
+        - `refund_amount` tidak boleh melebihi nominal transaksi.
+        - Di produksi, refund hanya tersedia untuk sebagian transaksi e-wallet.
+        - Transaksi sandbox di-refund secara lokal tanpa memanggil penyedia dan
+          tanpa memotong saldo nyata.
+
+        Status berubah menjadi `refunded`. Saldo merchant di debit sebesar
+        `refund_amount` bila saldo mencukupi.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [trx_id, refund_amount]
+              properties:
+                trx_id:
+                  type: string
+                  description: ID transaksi Paymenku.
+                  examples: [IDP202610271005426934]
+                refund_amount:
+                  type: number
+                  minimum: 1
+                  description: Nominal yang dikembalikan, tidak melebihi nominal transaksi.
+                  examples: [25950]
+                reason:
+                  type: string
+                  maxLength: 255
+                  description: Alasan refund, diteruskan ke penyedia.
+                  examples: [Pesanan dibatalkan pelanggan]
+            example:
+              trx_id: IDP202610271005426934
+              refund_amount: 25950
+              reason: Pesanan dibatalkan pelanggan
+      responses:
+        "200":
+          description: Refund diterima.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, examples: [success] }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      trx_id: { type: string }
+                      status: { type: string, examples: [refunded] }
+                      refund_amount: { type: number }
+                      merchant_refund_no: { type: string }
+              examples:
+                produksi:
+                  summary: Refund lewat penyedia
+                  value:
+                    status: success
+                    message: Transaction refunded successfully
+                    data:
+                      trx_id: IDP202610271005426934
+                      status: refunded
+                      refund_amount: 25950
+                      merchant_refund_no: REF20261027104512345678
+                sandbox:
+                  summary: Transaksi sandbox
+                  value:
+                    status: success
+                    message: Transaction refunded (sandbox)
+                    data:
+                      trx_id: SBOX202610271005426934
+                      status: refunded
+                      refund_amount: 25950
+        "401":
+          $ref: "#/components/responses/TidakTerotorisasi"
+        "404":
+          description: Transaksi tidak ada, atau milik merchant lain.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                status: error
+                message: Transaction not found
+        "422":
+          description: Transaksi tidak dapat di-refund, atau nominal tidak valid.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                status_salah:
+                  summary: Bukan transaksi paid
+                  value:
+                    status: error
+                    message: "Cannot refund transaction with status 'pending'. Only paid transactions can be refunded."
+                nominal_lebih:
+                  summary: Nominal melebihi transaksi
+                  value:
+                    status: error
+                    message: Refund amount cannot exceed transaction amount.
+                penyedia_salah:
+                  summary: Kanal tidak mendukung refund
+                  value:
+                    status: error
+                    message: Refund is not supported for this transaction.
+                tipe_salah:
+                  summary: Bukan e-wallet
+                  value:
+                    status: error
+                    message: Refund is currently only supported for E-Wallet payment type.
+        "429":
+          $ref: "#/components/responses/TerlaluBanyakRequest"
+        "500":
+          description: Penyedia gagal memproses refund.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, examples: [error] }
+                  message: { type: string }
+                  error_code: { type: [string, "null"] }
+              example:
+                status: error
+                message: "Failed to refund transaction: Unknown error"
+
+  /wallet/balance:
+    get:
+      tags: [Wallet]
+      summary: Saldo tersedia
+      operationId: getWalletBalance
+      description: Saldo yang sudah lewat kliring dan dapat ditarik.
+      responses:
+        "200":
+          description: Saldo tersedia.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      balance: { type: string, examples: ["36793.00"] }
+                      currency: { type: string, examples: [IDR] }
+                      formatted: { type: string, examples: ["Rp 36.793"] }
+              example:
+                success: true
+                data:
+                  balance: "36793.00"
+                  currency: IDR
+                  formatted: Rp 36.793
+        "401":
+          $ref: "#/components/responses/TidakTerotorisasi"
+        "404":
+          description: Merchant belum punya wallet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorSukses" }
+              example:
+                success: false
+                message: Wallet not found
+
+  /wallet/balance/pending:
+    get:
+      tags: [Wallet]
+      summary: Saldo dalam kliring
+      operationId: getWalletPendingBalance
+      description: |
+        Saldo dari pembayaran yang sudah masuk tetapi masih menunggu kliring.
+        `clearing_days` adalah jumlah hari kerja yang berlaku saat ini.
+      responses:
+        "200":
+          description: Saldo dalam kliring.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      pending_balance: { type: string }
+                      currency: { type: string }
+                      formatted: { type: string }
+                      clearing_days: { type: integer }
+                      note: { type: string }
+              example:
+                success: true
+                data:
+                  pending_balance: "0.00"
+                  currency: IDR
+                  formatted: Rp 0
+                  clearing_days: 2
+                  note: Funds will be available after 2 business days from payment confirmation
+        "401":
+          $ref: "#/components/responses/TidakTerotorisasi"
+        "404":
+          description: Merchant belum punya wallet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorSukses" }
+
+webhooks:
+  payment.status_updated:
+    post:
+      tags: [Webhooks]
+      summary: Status pembayaran berubah
+      operationId: webhookPaymentStatusUpdated
+      description: |
+        Paymenku mengirim HTTP POST ke `callback_url` merchant setiap kali
+        status pembayaran berubah. **Inilah sumber status yang resmi** —
+        polling `check-status` hanya untuk rekonsiliasi.
+
+        ## Verifikasi tanda tangan
+
+        Hitung HMAC-SHA256 atas `timestamp + "." + raw_body` memakai webhook
+        secret Anda, lalu bandingkan konstan-waktu dengan header
+        `X-PaymenKu-Signature`.
+
+        Yang di-hash adalah **raw body** persis seperti diterima. Jangan parse
+        JSON lalu serialisasi ulang — urutan kunci dan spasi akan berubah dan
+        tanda tangan jadi tidak cocok.
+
+        ```php
+        $raw  = file_get_contents('php://input');
+        $ts   = $_SERVER['HTTP_X_PAYMENKU_TIMESTAMP'] ?? '';
+        $sig  = $_SERVER['HTTP_X_PAYMENKU_SIGNATURE'] ?? '';
+        $mine = hash_hmac('sha256', $ts . '.' . $raw, $webhookSecret);
+
+        if (! hash_equals($mine, $sig)) {
+            http_response_code(401);
+            exit;
+        }
+        ```
+
+        ```javascript
+        import crypto from 'node:crypto';
+
+        // Butuh raw body — di Express: express.raw({ type: 'application/json' })
+        const mine = crypto
+          .createHmac('sha256', webhookSecret)
+          .update(`${req.get('X-PaymenKu-Timestamp')}.${req.body}`)
+          .digest('hex');
+
+        const sig = req.get('X-PaymenKu-Signature');
+        const ok =
+          mine.length === sig.length &&
+          crypto.timingSafeEqual(Buffer.from(mine), Buffer.from(sig));
+        ```
+
+        ## Aturan penanganan
+
+        - **Balas 2xx secepatnya**, lalu proses di belakang. Balasan lambat
+          memicu pengiriman ulang.
+        - **Idempoten per `trx_id`.** Pengiriman ulang itu normal; memproses
+          dua kali dapat menggandakan pengiriman barang atau saldo.
+        - **Jangan percaya `amount` dari webhook sebagai nilai pesanan.**
+          Cocokkan dengan `reference_id` di sistem Anda.
+        - **Periksa `is_sandbox`.** Webhook sandbox tidak boleh memicu
+          pemenuhan pesanan sungguhan.
+      parameters:
+        - name: X-PaymenKu-Signature
+          in: header
+          required: true
+          description: "`HMAC-SHA256(timestamp + \".\" + raw_body, webhook_secret)` dalam hex."
+          schema: { type: string }
+        - name: X-PaymenKu-Timestamp
+          in: header
+          required: true
+          description: Unix timestamp; bagian dari data yang ditandatangani.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayloadWebhook"
+            examples:
+              lunas:
+                summary: Pembayaran berhasil
+                value:
+                  event: payment.status_updated
+                  trx_id: IDP202610271040123456
+                  reference_id: INV-20261027-002
+                  status: paid
+                  amount: "250000.00"
+                  total_fee: "4940.00"
+                  amount_received: "245060.00"
+                  payment_channel: bca_va
+                  customer_name: Budi Santoso
+                  customer_email: budi@example.com
+                  paid_at: "2026-10-27T10:45:12+07:00"
+                  created_at: "2026-10-27T10:40:00+07:00"
+                  is_sandbox: false
+              kedaluwarsa:
+                summary: Transaksi kedaluwarsa
+                value:
+                  event: payment.status_updated
+                  trx_id: IDP202610271040123456
+                  reference_id: INV-20261027-002
+                  status: expired
+                  amount: "250000.00"
+                  payment_channel: bca_va
+                  paid_at: null
+                  is_sandbox: false
+      responses:
+        "200":
+          description: Diterima. Balas 2xx apa pun agar tidak dikirim ulang.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      # Mengganti placeholder bawaan Scalar (`YOUR_SECRET_TOKEN`) yang muncul di
+      # setiap contoh kode. Ekstensi ini adalah jalur resmi Scalar untuk itu —
+      # lebih baik daripada menambal bundle hasil build.
+      x-scalar-secret-token: YOUR_APIKEY
+      description: |
+        Kirim kunci API sebagai bearer token pada header `Authorization`,
+        dengan format `Bearer YOUR_APIKEY`.
+
+        Ada dua jenis kunci:
+
+        - `sk_live_` — produksi. Transaksi nyata, dan butuh KYC yang sudah
+          disetujui.
+        - `sk_test_` — sandbox. Tanpa perpindahan dana, tanpa syarat KYC.
+
+        Ambil kunci di Dashboard Merchant, menu Settings lalu API Keys.
+
+        Kunci API adalah kredensial rahasia: simpan di environment variable
+        atau secret manager. Jangan pernah menaruhnya di frontend, aplikasi
+        mobile, atau repositori publik.
+
+  responses:
+    TidakTerotorisasi:
+      description: Kunci API tidak ada, formatnya salah, atau tidak dikenali.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            tanpa_kunci:
+              summary: Header Authorization tidak ada (respons nyata)
+              value:
+                status: error
+                message: Unauthorized. API Token required.
+            format_salah:
+              summary: Prefix kunci salah
+              value:
+                status: error
+                message: "Unauthorized. Invalid API Key format. Use sk_live_* or sk_test_*"
+            kunci_tidak_dikenal:
+              summary: Kunci tidak terdaftar
+              value:
+                status: error
+                message: Unauthorized. Invalid API Token.
+    TidakDitemukan:
+      description: Objek tidak ada, atau milik merchant lain.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            status: error
+            message: Transaction not found
+    ValidasiGagal:
+      description: Input tidak lolos validasi.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorValidasi" }
+          example:
+            status: error
+            message: Validation failed
+            errors:
+              amount: ["validation.required"]
+    ValidasiLaravel:
+      description: |
+        Validasi gagal pada endpoint yang memakai validator Laravel langsung
+        (fee calculator dan payment instruction). Bentuknya **tanpa** `status`.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: { type: string }
+              errors:
+                type: object
+                additionalProperties:
+                  type: array
+                  items: { type: string }
+          example:
+            message: The amount field is required.
+            errors:
+              amount: ["The amount field is required."]
+    TerlaluBanyakRequest:
+      description: |
+        Melebihi batas request. Tunggu sesuai `Retry-After`, lalu ulangi dengan
+        backoff eksponensial.
+      headers:
+        X-RateLimit-Limit:
+          description: Kuota request dalam jendela saat ini.
+          schema: { type: integer, examples: [120] }
+        X-RateLimit-Remaining:
+          description: Sisa kuota.
+          schema: { type: integer, examples: [0] }
+        X-RateLimit-Reset:
+          description: Unix timestamp saat kuota direset.
+          schema: { type: integer }
+        Retry-After:
+          description: Detik sampai boleh mencoba lagi.
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            status: error
+            message: Rate limit exceeded. Please retry after 42 seconds.
+
+  schemas:
+    StatusTransaksi:
+      type: string
+      title: Status transaksi
+      description: |
+        | Status | Arti |
+        |---|---|
+        | `pending` | Dibuat, menunggu pembayaran |
+        | `paid` | Terbayar; dana masuk setelah kliring |
+        | `expired` | Lewat batas waktu pembayaran |
+        | `failed` | Gagal di sisi penyedia |
+        | `cancelled` | Dibatalkan dari dashboard |
+        | `refunded` | Sudah di-refund |
+
+        Hanya `paid` yang boleh memicu pemenuhan pesanan.
+      enum: [pending, paid, expired, failed, cancelled, refunded]
+
+    Error:
+      type: object
+      title: Galat
+      properties:
+        status: { type: string, examples: [error] }
+        message: { type: string }
+
+    ErrorSukses:
+      type: object
+      title: Galat (envelope success)
+      description: Bentuk galat pada endpoint yang memakai `success`.
+      properties:
+        success: { type: boolean, examples: [false] }
+        message: { type: string }
+
+    ErrorValidasi:
+      type: object
+      title: Galat validasi
+      properties:
+        status: { type: string, examples: [error] }
+        message: { type: string, examples: [Validation failed] }
+        errors:
+          type: object
+          description: Kunci adalah nama field; nilainya daftar pesan galat.
+          additionalProperties:
+            type: array
+            items: { type: string }
+
+    BuatTransaksi:
+      type: object
+      title: Permintaan buat transaksi
+      required:
+        [channel_code, amount, reference_id, customer_name, customer_email, return_url]
+      properties:
+        channel_code:
+          type: string
+          description: Kode kanal dari `GET /payment-channels`.
+          examples: [qris]
+        amount:
+          type: number
+          minimum: 1000
+          description: |
+            Nominal dasar dalam rupiah. Minimum global 1.000, tetapi tiap kanal
+            punya batasnya sendiri (VA 10.000, gerai ritel 15.000) — pakai
+            `min_amount` dari daftar kanal.
+          examples: [15000]
+        reference_id:
+          type: string
+          maxLength: 255
+          description: Identitas unik di sistem Anda. Dipakai untuk pencocokan webhook.
+          examples: [INV-20261027-001]
+        customer_name:
+          type: string
+          examples: [Uji Dokumentasi]
+        customer_email:
+          type: string
+          format: email
+          examples: [uji@example.com]
+        return_url:
+          type: string
+          format: uri
+          description: Tujuan redirect setelah pembayaran selesai.
+          examples: [https://tokoanda.com/selesai]
+        customer_phone:
+          type: string
+          maxLength: 20
+          description: |
+            **Wajib untuk OVO.** Dipakai juga untuk notifikasi WhatsApp bila
+            merchant mengaktifkannya.
+          examples: ["08123456789"]
+        order_items:
+          type: array
+          maxItems: 100
+          description: Rincian produk; tampil di halaman bayar dan jejak audit.
+          items:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string, maxLength: 255 }
+              quantity: { type: integer, minimum: 1, default: 1 }
+
+    InfoPembayaran:
+      type: object
+      title: Info pembayaran
+      description: |
+        Bentuknya **bergantung tipe kanal dan penyedia**, bukan satu skema
+        seragam. Field yang mungkin muncul:
+
+        | Tipe | Field |
+        |---|---|
+        | Virtual Account | `transaction_id`, `transaction_status`, `bank`, `va_number`, `expiration_date` |
+        | QRIS | `transaction_id`, `transaction_status`, `qr_url`, `qr_string`, `expiration_date` |
+        | QRIS Custom | `qr_url`, `qr_string`, `merchant_name`, `expiration_date` — tanpa `transaction_id` |
+        | E-wallet | `transaction_id`, `transaction_status`, `checkout_url`, `expiration_date`; sebagian kanal menambahkan `payment_actions` atau `checkout_url_app` |
+        | Gerai ritel | `transaction_id`, `transaction_status`, `store`, `payment_code`, `expiration_date` |
+
+        Pada transaksi sandbox, `payment_info` juga memuat `sandbox: true` dan
+        `simulator_url`.
+
+        Jangan mengasumsikan `transaction_id` selalu ada: kanal QRIS Custom
+        tidak mengembalikannya. Periksa field yang ada.
+      properties:
+        va_number: { type: [string, "null"], description: Nomor Virtual Account. }
+        bank: { type: [string, "null"], description: Nama bank penerbit VA. }
+        payment_code:
+          type: [string, "null"]
+          description: Kode bayar gerai ritel. Perhatikan — bukan `pay_code`.
+        store:
+          type: [string, "null"]
+          description: Nama gerai ritel, mis. `INDOMARET`.
+        checkout_url:
+          type: [string, "null"]
+          format: uri
+          description: Tujuan redirect untuk e-wallet.
+        checkout_url_app:
+          type: [string, "null"]
+          format: uri
+          description: Alternatif tautan checkout untuk aplikasi, bila penyedia mengirimkannya.
+        payment_actions:
+          type: [array, "null"]
+          description: Daftar aksi pembayaran dari penyedia (mis. deeplink), bila ada.
+          items: { type: object, additionalProperties: true }
+        qr_url:
+          type: [string, "null"]
+          format: uri
+          description: Gambar QR siap tampil.
+        qr_string:
+          type: [string, "null"]
+          description: Payload QRIS mentah, bila Anda merender QR sendiri.
+        merchant_name:
+          type: [string, "null"]
+          description: Nama merchant pada QRIS Custom.
+        transaction_id: { type: [string, "null"], description: Referensi di sisi penyedia; tidak selalu ada. }
+        transaction_status: { type: [string, "null"] }
+        expiration_date: { type: [string, "null"], description: Batas waktu pembayaran. }
+        sandbox: { type: [boolean, "null"] }
+        simulator_url:
+          type: [string, "null"]
+          format: uri
+          description: Simulator pembayaran, hanya pada sandbox.
+      additionalProperties: true
+
+    ResponsBuatTransaksi:
+      type: object
+      title: Respons buat transaksi
+      properties:
+        status: { type: string, examples: [success] }
+        data:
+          type: object
+          properties:
+            trx_id:
+              type: string
+              description: ID Paymenku. Prefix `IDP` untuk live, `SBOX` untuk sandbox.
+              examples: [SBOX202610270912228342]
+            reference_id: { type: string }
+            amount:
+              type: string
+              description: Nominal yang dibayar pelanggan, string desimal.
+              examples: ["15305.00"]
+            status: { type: string, enum: [pending] }
+            pay_url:
+              type: string
+              format: uri
+              description: Halaman pembayaran Paymenku; aman dibagikan ke pelanggan.
+            payment_info: { $ref: "#/components/schemas/InfoPembayaran" }
+            sandbox_mode: { type: [boolean, "null"] }
+            sandbox_notice: { type: [string, "null"] }
+
+    RingkasanTransaksi:
+      type: object
+      title: Transaksi
+      properties:
+        trx_id: { type: string }
+        reference_id: { type: string }
+        amount: { type: string, description: Nominal yang dibayar pelanggan. }
+        total_fee: { type: string }
+        amount_received:
+          type: string
+          description: Nominal yang masuk ke saldo merchant setelah fee.
+        status: { $ref: "#/components/schemas/StatusTransaksi" }
+        is_sandbox: { type: boolean }
+        customer_name: { type: string }
+        customer_email: { type: string }
+        customer_phone: { type: [string, "null"] }
+        order_items:
+          type: [array, "null"]
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              quantity: { type: integer }
+        payment_channel:
+          type: [object, "null"]
+          properties:
+            code: { type: string }
+            name: { type: string }
+            type: { type: string }
+        pay_url: { type: string, format: uri }
+        paid_at: { type: [string, "null"], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ResponsTransaksi:
+      type: object
+      properties:
+        status: { type: string, examples: [success] }
+        data: { $ref: "#/components/schemas/RingkasanTransaksi" }
+
+    ResponsDaftarTransaksi:
+      type: object
+      properties:
+        status: { type: string, examples: [success] }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/RingkasanTransaksi" }
+        pagination:
+          type: object
+          properties:
+            current_page: { type: integer }
+            per_page: { type: integer }
+            total: { type: integer }
+            total_pages: { type: integer }
+            has_more: { type: boolean }
+
+    KanalPembayaran:
+      type: object
+      title: Kanal pembayaran
+      properties:
+        code:
+          type: string
+          description: Dipakai sebagai `channel_code` saat membuat transaksi.
+          examples: [bca_va]
+        name: { type: string, examples: [BCA Virtual Account] }
+        type:
+          type: string
+          description: Menentukan bentuk `payment_info`.
+          enum: [va, ewallet, qris, cstore]
+        group: { type: [string, "null"], description: Label pengelompokan untuk UI. }
+        flow_type:
+          type: string
+          description: "`direct` dibayar di tempat; `redirect` mengarahkan pelanggan keluar."
+          enum: [direct, redirect]
+        icon: { type: [string, "null"], format: uri }
+        fee_mode:
+          type: string
+          description: Siapa menanggung fee. Bisa berbeda antar kanal pada merchant yang sama.
+          enum: [merchant, customer, split]
+        fee_flat: { type: number, description: Fee tetap dalam rupiah. }
+        fee_percent: { type: number, description: Fee persentase dari nominal. }
+        min_amount: { type: [number, "null"] }
+        max_amount: { type: [number, "null"] }
+
+    ResponsHitungFee:
+      type: object
+      properties:
+        success: { type: boolean }
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              name: { type: string }
+              group: { type: [string, "null"] }
+              type: { type: string }
+              flow: { type: string }
+              fee:
+                type: object
+                properties:
+                  flat: { type: number }
+                  percent: { type: number }
+              total_fee:
+                type: object
+                description: Fee yang sudah dipecah sesuai `fee_mode`.
+                properties:
+                  merchant: { type: number }
+                  customer: { type: number }
+              fee_mode: { type: string, enum: [merchant, customer, split] }
+              limits:
+                type: object
+                properties:
+                  min_amount: { type: integer }
+                  max_amount: { type: [integer, "null"] }
+                  min_expiry_minutes: { type: integer }
+                  max_expiry_minutes: { type: integer }
+
+    BuatPaymentLink:
+      type: object
+      title: Permintaan buat payment link
+      required: [amount, customer_name, customer_email]
+      properties:
+        amount: { type: number, minimum: 1000 }
+        title:
+          type: string
+          maxLength: 255
+          description: Bila kosong, memakai nama item pertama atau "Pembayaran".
+        description: { type: string, maxLength: 1000 }
+        customer_name: { type: string, maxLength: 255 }
+        customer_email: { type: string, format: email, maxLength: 255 }
+        return_url: { type: string, format: uri }
+        expires_in_minutes:
+          type: integer
+          minimum: 5
+          maximum: 43200
+          default: 1440
+          description: Masa berlaku 5 menit sampai 30 hari. Bawaan 24 jam.
+        is_single_use:
+          type: boolean
+          default: true
+          description: Bila `true`, tautan mati setelah satu pembayaran berhasil.
+        order_items:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string, maxLength: 255 }
+              quantity: { type: integer, minimum: 1, default: 1 }
+
+    PaymentLink:
+      type: object
+      title: Payment link
+      properties:
+        link_id: { type: string, examples: [PLAB12CD34EF56] }
+        payment_url: { type: string, format: uri }
+        title: { type: string }
+        description: { type: [string, "null"] }
+        amount: { type: number }
+        items:
+          type: [array, "null"]
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              quantity: { type: integer }
+        status: { type: string, examples: [active] }
+        is_single_use: { type: boolean }
+        expires_at: { type: string, format: date-time }
+        expires_in_minutes: { type: [integer, "null"] }
+        customer_name: { type: string }
+        customer_email: { type: string }
+        return_url: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+
+    PayloadWebhook:
+      type: object
+      title: Payload webhook
+      properties:
+        event: { type: string, examples: [payment.status_updated] }
+        trx_id: { type: string }
+        reference_id:
+          type: string
+          description: Referensi Anda sendiri — pakai ini untuk mencocokkan pesanan.
+        status: { $ref: "#/components/schemas/StatusTransaksi" }
+        amount: { type: string }
+        total_fee: { type: [string, "null"] }
+        amount_received: { type: [string, "null"] }
+        payment_channel: { type: string }
+        customer_name: { type: [string, "null"] }
+        customer_email: { type: [string, "null"] }
+        paid_at: { type: [string, "null"], format: date-time }
+        created_at: { type: [string, "null"], format: date-time }
+        is_sandbox:
+          type: boolean
+          description: Webhook sandbox tidak boleh memicu pemenuhan pesanan sungguhan.

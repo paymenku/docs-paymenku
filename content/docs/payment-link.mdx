@@ -1,0 +1,121 @@
+---
+title: Payment link
+description: Tautan checkout di mana pelanggan memilih sendiri kanal pembayarannya.
+icon: Link
+---
+
+Tautan checkout. Berbeda dari membuat transaksi: merchant **tidak** memilih
+kanal — pelanggan yang memilih di halaman pembayaran.
+
+<Callout title="Hanya untuk kunci live" type="warn">
+  Payment link melahirkan transaksi nyata, sehingga kunci sandbox
+  (`sk_test_*`) ditolak dengan `403`.
+</Callout>
+
+## Membuat tautan
+
+`POST /payment-link/create`
+
+```bash
+curl https://paymenku.com/api/v1/payment-link/create \
+  --request POST \
+  --header 'Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx' \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "amount": 150000,
+    "title": "Invoice #1024",
+    "customer_name": "Budi Santoso",
+    "customer_email": "budi@example.com",
+    "return_url": "https://tokoanda.com/selesai",
+    "order_items": [{ "name": "Paket Internet 30 Hari", "quantity": 1 }]
+  }'
+```
+
+| Field | Wajib | Keterangan |
+|---|---|---|
+| `amount` | Ya | Nominal, minimum Rp 1.000 |
+| `customer_name` | Ya | Nama pelanggan |
+| `customer_email` | Ya | Email pelanggan |
+| `title` | Tidak | Bila kosong, memakai nama item pertama atau "Pembayaran" |
+| `description` | Tidak | Maksimal 1.000 karakter |
+| `return_url` | Tidak | Tujuan redirect setelah pembayaran |
+| `expires_in_minutes` | Tidak | 5 menit–30 hari, bawaan 1.440 menit (24 jam) |
+| `is_single_use` | Tidak | Bawaan `true` — tautan mati setelah satu pembayaran berhasil |
+| `order_items` | Tidak | Maksimal 100 baris |
+
+Respons `201`:
+
+```json
+{
+  "status": "success",
+  "message": "Payment link berhasil dibuat",
+  "data": {
+    "link_id": "PLAB12CD34EF56",
+    "payment_url": "https://paymenku.com/link/PLAB12CD34EF56",
+    "title": "Invoice #1024",
+    "description": null,
+    "amount": 150000,
+    "items": [{ "name": "Paket Internet 30 Hari", "quantity": 1 }],
+    "status": "active",
+    "is_single_use": true,
+    "expires_at": "2026-10-28T09:00:00+07:00",
+    "expires_in_minutes": 1440,
+    "customer_name": "Budi Santoso",
+    "customer_email": "budi@example.com",
+    "return_url": "https://tokoanda.com/selesai",
+    "created_at": "2026-10-27T09:00:00+07:00"
+  }
+}
+```
+
+Bagikan `payment_url` kepada pelanggan.
+
+## Galat sandbox
+
+```json
+{
+  "status": "error",
+  "message": "Payment Link belum tersedia untuk kunci uji (sk_test_*). Gunakan kunci live."
+}
+```
+
+## Detail tautan
+
+`GET /payment-link/{linkId}` mengembalikan detail tautan beserta `tersedia`
+(masih bisa dibayar atau tidak) dan transaksi yang sudah lahir dari tautan ini.
+
+```json
+{
+  "status": "success",
+  "data": {
+    "link_id": "PLAB12CD34EF56",
+    "payment_url": "https://paymenku.com/link/PLAB12CD34EF56",
+    "title": "Invoice #1024",
+    "amount": 150000,
+    "status": "active",
+    "is_single_use": true,
+    "expires_at": "2026-10-28T09:00:00+07:00",
+    "tersedia": true,
+    "transaksi": {
+      "trx_id": "IDP202610271040123456",
+      "status": "pending",
+      "paid_at": null
+    }
+  }
+}
+```
+
+Tautan yang tidak ada — atau milik merchant lain — dibalas `404`:
+
+```json
+{ "status": "error", "message": "Payment link tidak ditemukan." }
+```
+
+## Kapan memakai payment link
+
+- Menagih pelanggan lewat WhatsApp atau email tanpa membangun halaman checkout.
+- Nominal tetap, tetapi kanal pembayaran bebas dipilih pelanggan.
+- Butuh tautan sekali pakai yang kedaluwarsa otomatis.
+
+Untuk pembayaran yang kanalnya Anda tentukan sendiri, pakai
+[Buat Transaksi](/docs/transaksi).

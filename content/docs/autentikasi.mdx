@@ -1,0 +1,80 @@
+---
+title: Autentikasi
+description: Kunci API, perbedaan live dan sandbox, syarat KYC, dan cara menjaganya.
+icon: KeyRound
+---
+
+Setiap permintaan butuh kunci API pada header `Authorization`.
+
+```http
+Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx
+Content-Type: application/json
+Accept: application/json
+```
+
+## Dua jenis kunci
+
+| Prefix | Lingkungan | Dana nyata | Perlu KYC |
+|---|---|---|---|
+| `sk_live_` | Produksi | Ya | Ya |
+| `sk_test_` | Sandbox | Tidak | Tidak |
+
+Prefix selain keduanya langsung ditolak:
+
+```json
+{
+  "status": "error",
+  "message": "Unauthorized. Invalid API Key format. Use sk_live_* or sk_test_*"
+}
+```
+
+## Syarat kunci live
+
+Kunci `sk_live_` baru aktif setelah **KYC pemilik akun disetujui**. Sebelum itu:
+
+```json
+{
+  "status": "error",
+  "message": "Forbidden. KYC verification required before using live API. Please complete KYC verification in your dashboard."
+}
+```
+
+Merchant yang dibuat khusus sandbox juga tidak bisa memakai kunci live — buat
+merchant produksi setelah KYC selesai.
+
+## Respons tanpa kunci atau kunci salah
+
+| Kondisi | Respons |
+|---|---|
+| Header `Authorization` tidak ada | `Unauthorized. API Token required.` |
+| Prefix bukan `sk_live_`/`sk_test_` | `Unauthorized. Invalid API Key format. Use sk_live_* or sk_test_*` |
+| Kunci tidak terdaftar | `Unauthorized. Invalid API Token.` |
+| Merchant ditangguhkan | `Forbidden. Merchant account is suspended.` |
+| Merchant khusus sandbox memakai kunci live | `This merchant is sandbox-only. Create a live merchant after completing KYC.` |
+
+Semuanya berstatus HTTP `401`, kecuali dua yang terakhir `403`.
+
+## Menjaga kunci
+
+- Simpan di environment variable atau secret manager.
+- Jangan pernah menaruhnya di frontend, aplikasi mobile, atau repositori
+  publik. Kunci yang bocor dapat membuat transaksi atas nama Anda.
+- Panggil API hanya dari server Anda sendiri.
+- Rotasi kunci dari dashboard bila dicurigai bocor.
+
+<Callout title="Kunci berbeda per merchant" type="info">
+  Satu akun dapat memiliki beberapa merchant. Kunci API terikat pada satu
+  merchant, dan data yang terlihat hanya data merchant tersebut.
+</Callout>
+
+## Contoh yang benar
+
+```bash
+export PAYMENKU_KEY="sk_live_xxxxxxxxxxxxxxxx"
+
+curl https://paymenku.com/api/v1/payment-channels \
+  --header "Authorization: Bearer $PAYMENKU_KEY"
+```
+
+Jangan menulis kunci langsung di dalam kode sumber atau perintah yang
+tersimpan di riwayat shell produksi.

@@ -1,0 +1,30 @@
+---
+title: Hitung fee
+full: true
+_openapi:
+  preload:
+    - ./openapi.yaml
+  method: GET
+  webhook: false
+  toc: []
+  structuredData:
+    headings: []
+    contents:
+      - content: |
+          Menghitung fee untuk satu nominal, sebelum transaksi dibuat. Tanpa
+          `code`, seluruh kanal aktif dikembalikan — berguna untuk menampilkan
+          perbandingan biaya di halaman checkout.
+
+          `total_fee` sudah dipecah menjadi bagian merchant dan bagian pelanggan
+          sesuai `fee_mode`, jadi Anda tidak perlu menghitung ulang.
+---
+
+export default function Layout(props) {
+  const { OpenAPIPage } = props.components ?? {};
+  return (
+    <>
+      {props.children}
+      <OpenAPIPage document="./openapi.yaml" operations={[{"path":"/merchant/fee-calculator","method":"get"}]} showDescription />
+    </>
+  );
+}

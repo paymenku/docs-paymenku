@@ -1,0 +1,12 @@
+{
+  "title": "Transaksi",
+  "pages": [
+    "index",
+    "virtual-account",
+    "qris",
+    "e-wallet",
+    "gerai-ritel",
+    "aksi",
+    "status"
+  ]
+}

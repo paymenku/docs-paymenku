@@ -1,0 +1,107 @@
+---
+title: Status & riwayat
+description: Cek satu transaksi dan telusuri riwayat merchant.
+icon: ListChecks
+---
+
+## Cek status transaksi
+
+`GET /check-status/{order_id}` mencari satu transaksi berdasarkan `trx_id`
+**atau** `reference_id` — keduanya diterima pada parameter yang sama.
+
+```bash
+curl https://paymenku.com/api/v1/check-status/INV-20261027-001 \
+  --header 'Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx'
+```
+
+```json
+{
+  "status": "success",
+  "data": {
+    "trx_id": "IDP202610270912228342",
+    "reference_id": "INV-20261027-001",
+    "amount": "15305.00",
+    "total_fee": "305.00",
+    "amount_received": "15000.00",
+    "status": "pending",
+    "is_sandbox": false,
+    "customer_name": "Uji Dokumentasi",
+    "customer_email": "uji@example.com",
+    "customer_phone": null,
+    "order_items": [{ "name": "Item Uji", "quantity": 1 }],
+    "payment_channel": { "code": "qris", "name": "QRIS", "type": "qris" },
+    "pay_url": "https://paymenku.com/pay/IDP202610270912228342",
+    "paid_at": null,
+    "created_at": "2026-10-27T09:12:04+07:00",
+    "updated_at": "2026-10-27T09:12:05+07:00"
+  }
+}
+```
+
+Transaksi yang tidak ada — atau milik merchant lain — dibalas `404`:
+
+```json
+{ "status": "error", "message": "Transaction not found" }
+```
+
+Gunakan endpoint ini untuk rekonsiliasi, bukan sebagai pengganti webhook.
+
+## Daftar transaksi
+
+`GET /transactions` mengembalikan transaksi milik merchant, terbaru lebih
+dulu. Alias yang setara: `GET /merchant/transactions`.
+
+| Parameter | Arti |
+|---|---|
+| `page` | Halaman, mulai dari 1 |
+| `per_page` | Baris per halaman, 1–100, bawaan 20 |
+| `status` | Filter status transaksi |
+| `channel_code` | Filter kode kanal |
+| `reference_id` | Cocok persis dengan referensi Anda |
+| `date_from`, `date_to` | Rentang tanggal (`YYYY-MM-DD`) |
+| `is_sandbox` | Pisahkan transaksi uji dan produksi |
+| `sort_by` | `created_at`, `amount`, `status`, `paid_at` |
+| `sort_order` | `asc` atau `desc` |
+
+`date_to` tidak boleh lebih awal dari `date_from`.
+
+```bash
+curl 'https://paymenku.com/api/v1/transactions?status=paid&per_page=50&date_from=2026-10-01' \
+  --header 'Authorization: Bearer sk_live_xxxxxxxxxxxxxxxx'
+```
+
+Respons menyertakan pagination:
+
+```json
+{
+  "status": "success",
+  "data": [ { "trx_id": "IDP202603221216116099", "status": "paid" } ],
+  "pagination": {
+    "current_page": 1,
+    "per_page": 50,
+    "total": 47,
+    "total_pages": 1,
+    "has_more": false
+  }
+}
+```
+
+## Field transaksi
+
+| Field | Arti |
+|---|---|
+| `amount` | Nominal yang dibayar pelanggan |
+| `total_fee` | Total fee yang dikenakan |
+| `amount_received` | Nominal yang masuk ke saldo merchant setelah fee |
+| `paid_at` | Waktu pembayaran, `null` bila belum dibayar |
+| `is_sandbox` | `true` untuk transaksi yang dibuat dengan kunci uji |
+
+Nominal berupa **string desimal**. Parse sebagai desimal, bukan float.
+
+## Rekonsiliasi yang disarankan
+
+1. Simpan `trx_id` dan `reference_id` saat membuat transaksi.
+2. Cocokkan pembayaran masuk memakai `reference_id` dari webhook.
+3. Jalankan `GET /transactions?status=paid&date_from=...` sekali sehari
+   sebagai jaring pengaman bila ada webhook yang gagal diterima.
+4. Jangan melakukan polling per transaksi.
