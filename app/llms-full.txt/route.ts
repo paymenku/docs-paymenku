@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic';
 const guideOrder = [
   '/docs/pengenalan',
   '/docs/mulai-cepat',
+  '/docs/sdk',
   '/docs/autentikasi',
   '/docs/batas-permintaan',
   '/docs/idempotensi',

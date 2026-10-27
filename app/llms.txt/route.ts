@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 const groups: { title: string; urls: string[] }[] = [
   {
     title: 'Mulai di sini',
-    urls: ['/docs/pengenalan', '/docs/mulai-cepat'],
+    urls: ['/docs/pengenalan', '/docs/mulai-cepat', '/docs/sdk'],
   },
   {
     title: 'Panduan',

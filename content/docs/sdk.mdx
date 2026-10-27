@@ -1,0 +1,255 @@
+---
+title: SDK resmi
+description: SDK PHP, Node.js, dan Go untuk API Paymenku — instalasi, contoh, dan verifikasi webhook.
+icon: Package
+---
+
+import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+
+Tiga SDK resmi tersedia. Semuanya mencakup seluruh endpoint publik, menangani
+envelope `status`/`success`, menyediakan tipe galat, dan memverifikasi tanda
+tangan webhook.
+
+<Cards>
+  <Card
+    title="PHP"
+    href="https://github.com/paymenku/sdk-php"
+    description="paymenku/sdk-php — PHP 8.1+, tanpa dependensi runtime."
+  />
+  <Card
+    title="Node.js"
+    href="https://github.com/paymenku/sdk-nodejs"
+    description="@paymenku/sdk-nodejs — Node 18+, ESM dan CommonJS."
+  />
+  <Card
+    title="Go"
+    href="https://github.com/paymenku/sdk-go"
+    description="github.com/paymenku/sdk-go — Go 1.22+, tanpa dependensi."
+  />
+</Cards>
+
+## Instalasi
+
+<Tabs items={['PHP', 'Node.js', 'Go']}>
+  <Tab value="PHP">
+    ```bash
+    composer require paymenku/sdk-php
+    ```
+  </Tab>
+  <Tab value="Node.js">
+    ```bash
+    npm install @paymenku/sdk-nodejs
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```bash
+    go get github.com/paymenku/sdk-go
+    ```
+  </Tab>
+</Tabs>
+
+## Membuat transaksi
+
+<Tabs items={['PHP', 'Node.js', 'Go']}>
+  <Tab value="PHP">
+    ```php
+    use Paymenku\Client;
+
+    $client = new Client(getenv('PAYMENKU_API_KEY'));
+
+    $trx = $client->transactions->create([
+        'channel_code'   => 'qris',
+        'amount'         => 15000,
+        'reference_id'   => 'INV-20261027-001',
+        'customer_name'  => 'Budi Santoso',
+        'customer_email' => 'budi@example.com',
+        'return_url'     => 'https://tokoanda.com/selesai',
+    ], ['idempotencyKey' => 'INV-20261027-001']);
+
+    echo $trx['trx_id'];
+    echo $trx['payment_info']['qr_url'];
+    ```
+  </Tab>
+  <Tab value="Node.js">
+    ```js
+    import { Paymenku } from '@paymenku/sdk-nodejs';
+
+    const paymenku = new Paymenku(process.env.PAYMENKU_API_KEY);
+
+    const trx = await paymenku.transactions.create(
+      {
+        channel_code: 'qris',
+        amount: 15000,
+        reference_id: 'INV-20261027-001',
+        customer_name: 'Budi Santoso',
+        customer_email: 'budi@example.com',
+        return_url: 'https://tokoanda.com/selesai',
+      },
+      { idempotencyKey: 'INV-20261027-001' },
+    );
+
+    console.log(trx.trx_id, trx.payment_info.qr_url);
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    import (
+        "context"
+        "os"
+
+        paymenku "github.com/paymenku/sdk-go"
+    )
+
+    client, err := paymenku.NewClient(os.Getenv("PAYMENKU_API_KEY"))
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    trx, err := client.Transactions.Create(context.Background(),
+        paymenku.CreateTransactionInput{
+            ChannelCode:   "qris",
+            Amount:        15000,
+            ReferenceID:   "INV-20261027-001",
+            CustomerName:  "Budi Santoso",
+            CustomerEmail: "budi@example.com",
+            ReturnURL:     "https://tokoanda.com/selesai",
+        },
+        paymenku.WithIdempotencyKey("INV-20261027-001"),
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Peta metode
+
+| Aksi | PHP | Node.js | Go |
+|---|---|---|---|
+| Buat transaksi | `transactions->create()` | `transactions.create()` | `Transactions.Create()` |
+| Cek status | `transactions->get()` | `transactions.get()` | `Transactions.Get()` |
+| Daftar transaksi | `transactions->list()` | `transactions.list()` | `Transactions.List()` |
+| Batalkan | `transactions->cancel()` | `transactions.cancel()` | `Transactions.Cancel()` |
+| Refund | `transactions->refund()` | `transactions.refund()` | `Transactions.Refund()` |
+| Kanal aktif | `paymentChannels->list()` | `paymentChannels.list()` | `PaymentChannels.List()` |
+| Hitung fee | `fees->calculate()` | `fees.calculate()` | `Fees.Calculate()` |
+| Panduan bayar | `paymentInstructions->get()` | `paymentInstructions.get()` | `PaymentInstructions.Get()` |
+| Payment link | `paymentLinks->create()` / `->get()` | `paymentLinks.create()` / `.get()` | `PaymentLinks.Create()` / `.Get()` |
+| Wallet | `wallet->balance()` / `->pendingBalance()` | `wallet.balance()` / `.pendingBalance()` | `Wallet.Balance()` / `.PendingBalance()` |
+| Verifikasi webhook | `Webhook::verify()` | `verifyWebhookSignature()` | `VerifyWebhook()` |
+
+## Menangani galat
+
+<Tabs items={['PHP', 'Node.js', 'Go']}>
+  <Tab value="PHP">
+    ```php
+    use Paymenku\Exception\ApiException;
+    use Paymenku\Exception\NetworkException;
+
+    try {
+        $client->transactions->create($input);
+    } catch (ApiException $e) {
+        $e->statusCode();   // 422
+        $e->getMessage();   // Validation failed
+        $e->errors();       // ['amount' => ['validation.min']]
+        $e->errorCode();
+    } catch (NetworkException $e) {
+        // timeout atau koneksi gagal
+    }
+    ```
+  </Tab>
+  <Tab value="Node.js">
+    ```js
+    import { PaymenkuApiError, PaymenkuNetworkError } from '@paymenku/sdk-nodejs';
+
+    try {
+      await paymenku.transactions.create(input);
+    } catch (error) {
+      if (error instanceof PaymenkuApiError) {
+        console.error(error.status);  // 422
+        console.error(error.message); // Validation failed
+        console.error(error.errors);  // { amount: ['validation.min'] }
+        console.error(error.errorCode);
+      } else if (error instanceof PaymenkuNetworkError) {
+        console.error('Jaringan/timeout:', error.message);
+      }
+    }
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    trx, err := client.Transactions.Create(ctx, input)
+    if err != nil {
+        var apiErr *paymenku.APIError
+        if errors.As(err, &apiErr) {
+            fmt.Println(apiErr.StatusCode) // 422
+            fmt.Println(apiErr.Message)    // Validation failed
+            fmt.Println(apiErr.Errors)     // map[amount:[validation.min]]
+        }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+Semua SDK memperlakukan envelope `status: "error"` atau `success: false`
+sebagai galat, meskipun HTTP-nya `200`.
+
+## Verifikasi webhook
+
+<Tabs items={['PHP', 'Node.js', 'Go']}>
+  <Tab value="PHP">
+    ```php
+    use Paymenku\Webhook;
+
+    $raw = file_get_contents('php://input');
+    $valid = Webhook::verify(
+        $raw,
+        $_SERVER['HTTP_X_PAYMENKU_TIMESTAMP'] ?? '',
+        $_SERVER['HTTP_X_PAYMENKU_SIGNATURE'] ?? '',
+        getenv('PAYMENKU_WEBHOOK_SECRET'),
+    );
+    ```
+  </Tab>
+  <Tab value="Node.js">
+    ```js
+    import { verifyWebhookSignature } from '@paymenku/sdk-nodejs';
+
+    const valid = verifyWebhookSignature({
+      rawBody: req.body, // Buffer dari express.raw()
+      timestamp: req.get('X-PaymenKu-Timestamp'),
+      signature: req.get('X-PaymenKu-Signature'),
+      secret: process.env.PAYMENKU_WEBHOOK_SECRET,
+    });
+    ```
+  </Tab>
+  <Tab value="Go">
+    ```go
+    raw, _ := io.ReadAll(r.Body)
+
+    valid := paymenku.VerifyWebhook(
+        raw,
+        r.Header.Get("X-PaymenKu-Timestamp"),
+        r.Header.Get("X-PaymenKu-Signature"),
+        os.Getenv("PAYMENKU_WEBHOOK_SECRET"),
+    )
+    ```
+  </Tab>
+</Tabs>
+
+Verifikasi memakai body **mentah**. Jangan parse JSON lalu marshal ulang —
+urutan kunci dan spasi berubah dan tanda tangan tidak cocok.
+
+## Catatan
+
+- Kunci `sk_test_...` untuk sandbox, `sk_live_...` untuk produksi (butuh KYC).
+- Nominal pada respons berupa **string desimal**; jangan dihitung sebagai float.
+- `payment_info` berbeda per kanal; `transaction_id` tidak selalu ada.
+- SDK tidak melakukan retry otomatis. Hormati `Retry-After` pada `429` dan
+  gunakan `Idempotency-Key` saat mengulang.
+- Status resmi tetap datang dari webhook, bukan polling.
+
+## Tautan
+
+| SDK | Repo | Registry |
+|---|---|---|
+| PHP | https://github.com/paymenku/sdk-php | https://packagist.org/packages/paymenku/sdk-php |
+| Node.js | https://github.com/paymenku/sdk-nodejs | https://www.npmjs.com/package/@paymenku/sdk-nodejs |
+| Go | https://github.com/paymenku/sdk-go | https://pkg.go.dev/github.com/paymenku/sdk-go |

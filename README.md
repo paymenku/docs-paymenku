@@ -32,6 +32,7 @@ npm start        # menjalankan hasil build
 
 - `pengenalan.mdx` — gambaran umum, envelope, siklus status
 - `mulai-cepat.mdx` — transaksi pertama dalam empat langkah
+- `sdk.mdx` — SDK PHP, Node.js, dan Go
 - `autentikasi.mdx`, `batas-permintaan.mdx`, `idempotensi.mdx`
 - `transaksi/` — buat transaksi dan panduan per kanal (VA, QRIS, e-wallet,
   gerai ritel, status)

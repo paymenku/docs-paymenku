@@ -66,6 +66,12 @@ export default function HomePage() {
           >
             Referensi API
           </Link>
+          <Link
+            href="/docs/sdk"
+            className="rounded-lg border px-5 py-2.5 text-sm font-medium transition-colors hover:bg-fd-accent"
+          >
+            SDK
+          </Link>
         </div>
 
         <div className="mt-14 rounded-xl border bg-fd-card">

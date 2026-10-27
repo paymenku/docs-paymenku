@@ -25,7 +25,6 @@ export function baseOptions(): BaseLayoutProps {
     links: [
       { text: 'Dokumentasi', url: '/docs' },
       { text: 'Dashboard', url: 'https://paymenku.com/merchant' },
-      { text: 'SDK', url: 'https://github.com/paymenku', external: true },
     ],
   };
 }
