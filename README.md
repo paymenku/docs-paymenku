@@ -89,28 +89,7 @@ hasil build sekitar **6 MiB gzip**, jadi butuh paket Workers **Paid** (batas
 paket gratis 3 MiB). Middleware (`proxy.ts`) berjalan, tetapi OpenNext
 menandainya eksperimental.
 
-### Host sendiri
 
-Produksi berjalan di VM `docker` (Tailscale `100.67.162.57`):
-
-| Item | Nilai |
-|---|---|
-| Direktori | `/opt/paymenku-docs` |
-| Service | `paymenku-docs.service` (systemd) |
-| Alamat | http://100.67.162.57:4700 |
-| Perintah | `systemctl restart paymenku-docs` |
-
-Sinkronisasi dari mesin pengembangan:
-
-```bash
-rsync -az --delete --exclude node_modules --exclude .next --exclude .git \
-  ./ root@100.67.162.57:/opt/paymenku-docs/ -e "ssh -i ~/.ssh/pods_platform"
-
-ssh -i ~/.ssh/pods_platform root@100.67.162.57 \
-  'cd /opt/paymenku-docs && npm ci && npm run build && systemctl restart paymenku-docs'
-```
-
-Service hanya mendengarkan di IP Tailscale, bukan antarmuka publik.
 
 ## Catatan
 
