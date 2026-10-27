@@ -162,5 +162,8 @@ fs.writeFileSync(
 fs.mkdirSync('public', { recursive: true });
 fs.copyFileSync('openapi.yaml', 'public/openapi.yaml');
 
+// Bentuk JSON dipakai lib/openapi.ts supaya runtime tidak perlu membaca berkas.
+fs.writeFileSync('openapi.json', JSON.stringify(spec));
+
 console.log('api-reference.generated.ts:', markdown.length, 'karakter');
 console.log('public/openapi.yaml disalin');

@@ -67,6 +67,30 @@ endpoint yang dihasilkan `scripts/generate-api-markdown.mjs` dari
 
 ## Deploy
 
+### Vercel
+
+Tidak perlu konfigurasi tambahan. Impor repo, framework terdeteksi sebagai
+Next.js, build `npm run build`, output `.next`. Tidak ada environment variable
+yang wajib.
+
+### Cloudflare Workers (OpenNext)
+
+Cloudflare Pages memakai adapter `next-on-pages` yang sudah deprecated. Jalur
+yang didukung adalah Workers lewat `@opennextjs/cloudflare`.
+
+```bash
+npm i -D @opennextjs/cloudflare wrangler
+npx opennextjs-cloudflare build
+npx wrangler deploy
+```
+
+`wrangler.jsonc` dan `open-next.config.ts` sudah disertakan. Ukuran Worker
+hasil build sekitar **6 MiB gzip**, jadi butuh paket Workers **Paid** (batas
+paket gratis 3 MiB). Middleware (`proxy.ts`) berjalan, tetapi OpenNext
+menandainya eksperimental.
+
+### Host sendiri
+
 Produksi berjalan di VM `docker` (Tailscale `100.67.162.57`):
 
 | Item | Nilai |
